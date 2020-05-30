@@ -4,6 +4,7 @@ pub trait TraceParser<T> {
 
 // pub trait TraceEntry {}
 
+#[derive(Debug)]
 pub struct ArcTraceEntry(pub std::ops::Range<usize>);
 
 // impl TraceEntry for ArcTraceEntry {}
