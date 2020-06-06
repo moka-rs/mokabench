@@ -10,5 +10,6 @@ edition = "2018"
 crossbeam-channel = "0.4"
 itertools = "0.9"
 moka = { git = "https://github.com/moka-rs/moka" }
+# moka = { git = "https://github.com/moka-rs/moka", rev = "11bcd462cde9" }  # 2020-05-30
 # moka = { path = "../moka" }
 parking_lot = "0.10"

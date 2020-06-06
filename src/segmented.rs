@@ -1,23 +1,19 @@
-use crate::{parser::ArcTraceEntry, report::Report};
+use crate::{cache_set::CacheSet, parser::ArcTraceEntry, report::Report};
 
-use moka::{ConcurrentCache, Cache};
+use moka::{ConcurrentCache, SegmentedCache};
 use std::collections::hash_map::RandomState;
 
-pub trait CacheSet<T> {
-    fn process(&mut self, entry: &T, report: &mut Report);
-}
+pub struct SegmentedMoka(SegmentedCache<usize, Box<[u8]>, RandomState>);
 
-pub struct Moka(Cache<usize, Box<[u8]>, RandomState>);
-
-impl Clone for Moka {
+impl Clone for SegmentedMoka {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl Moka {
-    pub fn new(capacity: usize) -> Self {
-        Self(Cache::new(capacity))
+impl SegmentedMoka {
+    pub fn new(capacity: usize, num_segments: usize) -> Self {
+        Self(SegmentedCache::new(capacity, num_segments))
     }
 
     fn get(&self, key: &usize) -> bool {
@@ -31,7 +27,7 @@ impl Moka {
     }
 }
 
-impl CacheSet<ArcTraceEntry> for Moka {
+impl CacheSet<ArcTraceEntry> for SegmentedMoka {
     fn process(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
         let mut read_count = 0;
         let mut hit_count = 0;
@@ -53,21 +49,21 @@ impl CacheSet<ArcTraceEntry> for Moka {
     }
 }
 
-pub struct SharedMoka(Moka);
+pub struct SharedSegmentedMoka(SegmentedMoka);
 
-impl SharedMoka {
-    pub fn new(capacity: usize) -> Self {
-        Self(Moka::new(capacity))
+impl SharedSegmentedMoka {
+    pub fn new(capacity: usize, num_segments: usize) -> Self {
+        Self(SegmentedMoka::new(capacity, num_segments))
     }
 }
 
-impl Clone for SharedMoka {
+impl Clone for SharedSegmentedMoka {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl CacheSet<ArcTraceEntry> for SharedMoka {
+impl CacheSet<ArcTraceEntry> for SharedSegmentedMoka {
     fn process(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
         self.0.process(entry, report)
     }

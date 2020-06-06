@@ -5,9 +5,12 @@ use std::{fs::File, io::BufReader, time::Instant};
 mod cache_set;
 mod parser;
 mod report;
+mod segmented;
 
 use cache_set::{CacheSet, Moka, SharedMoka};
 use parser::TraceParser;
+use segmented::SharedSegmentedMoka;
+
 pub use report::Report;
 
 pub fn run_single(capacity: usize) -> Result<Report, Box<dyn std::error::Error>> {
@@ -49,18 +52,63 @@ pub fn run_multi(capacity: usize, num_workers: u16) -> Result<Report, Box<dyn st
             std::thread::spawn(move || {
                 let mut parser = parser::ArcTraceParser;
                 let mut report = Report::new(capacity, None);
-                loop {
-                    match ch.recv() {
-                        Ok(lines) => {
-                            for line in lines {
-                                if let Ok(entry) = parser.parse(&line) {
-                                    cache.process(&entry, &mut report);
-                                }
-                            }
+                while let Ok(lines) = ch.recv() {
+                    for line in lines {
+                        if let Ok(entry) = parser.parse(&line) {
+                            cache.process(&entry, &mut report);
                         }
-                        Err(_) => {
-                            // No more tasks.
-                            break;
+                    }
+                }
+                report
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let instant = Instant::now();
+    for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
+        let chunk = chunk.collect::<Result<Vec<String>, _>>()?;
+        send.send(chunk)?;
+    }
+
+    // Drop the sender channel to notify the workers that we are finished.
+    std::mem::drop(send);
+
+    // Wait for the workers to finish and collect their reports.
+    let reports = handles
+        .into_iter()
+        .map(|h| h.join().expect("Failed"))
+        .collect::<Vec<_>>();
+    let elapsed = instant.elapsed();
+
+    // Merge the reports into one.
+    let mut report = Report::new(capacity, Some(num_workers));
+    report.duration = Some(elapsed);
+    reports.iter().for_each(|r| report.merge(r));
+
+    Ok(report)
+}
+
+pub fn run_multi_segmented(capacity: usize, num_workers: u16, num_segments: usize) -> Result<Report, Box<dyn std::error::Error>> {
+    let f = File::open("../trace-data/S3.lis")?;
+    let reader = BufReader::new(f);
+    let cache_set = SharedSegmentedMoka::new(capacity, num_segments);
+
+    const BATCH_SIZE: usize = 200;
+
+    let (send, receive) = crossbeam_channel::bounded::<Vec<String>>(100);
+
+    let handles = (0..num_workers)
+        .map(|_| {
+            let mut cache = cache_set.clone();
+            let ch = receive.clone();
+
+            std::thread::spawn(move || {
+                let mut parser = parser::ArcTraceParser;
+                let mut report = Report::new(capacity, None);
+                while let Ok(lines) = ch.recv() {
+                    for line in lines {
+                        if let Ok(entry) = parser.parse(&line) {
+                            cache.process(&entry, &mut report);
                         }
                     }
                 }

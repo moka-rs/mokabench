@@ -187,12 +187,13 @@ dependencies = [
 [[package]]
 name = "moka"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/moka-rs/moka#11bcd462cde9a3ac04216b290b1410eb056ca98c"
+source = "git+https://github.com/moka-rs/moka#5116f186b2b750e8dd494dd1540e559fc724ffc4"
 dependencies = [
  "cht",
  "count-min-sketch",
  "crossbeam-channel",
  "lazy_static",
+ "num_cpus",
  "parking_lot",
  "scheduled-thread-pool",
 ]
