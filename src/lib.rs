@@ -13,12 +13,17 @@ use segmented::SharedSegmentedMoka;
 
 pub use report::Report;
 
+// pub const TTL_SECS: u64 = 120 * 60;
+// pub const TTI_SECS: u64 = 60 * 60;
+pub const TTL_SECS: u64 = 3;
+pub const TTI_SECS: u64 = 1;
+
 pub fn run_single(capacity: usize) -> Result<Report, Box<dyn std::error::Error>> {
     let f = File::open("../trace-data/S3.lis")?;
     let reader = BufReader::new(f);
     let mut parser = parser::ArcTraceParser;
     let mut cache_set = Moka::new(capacity);
-    let mut report = Report::new(capacity, None);
+    let mut report = Report::new("Moka Cache", capacity, None);
 
     let instant = Instant::now();
     let lines = reader.lines().enumerate().map(|(c, l)| (c + 1, l));
@@ -51,7 +56,7 @@ pub fn run_multi(capacity: usize, num_workers: u16) -> Result<Report, Box<dyn st
 
             std::thread::spawn(move || {
                 let mut parser = parser::ArcTraceParser;
-                let mut report = Report::new(capacity, None);
+                let mut report = Report::new("Moka Cache", capacity, None);
                 while let Ok(lines) = ch.recv() {
                     for line in lines {
                         if let Ok(entry) = parser.parse(&line) {
@@ -81,14 +86,18 @@ pub fn run_multi(capacity: usize, num_workers: u16) -> Result<Report, Box<dyn st
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.
-    let mut report = Report::new(capacity, Some(num_workers));
+    let mut report = Report::new("Moka Cache", capacity, Some(num_workers));
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 
     Ok(report)
 }
 
-pub fn run_multi_segmented(capacity: usize, num_workers: u16, num_segments: usize) -> Result<Report, Box<dyn std::error::Error>> {
+pub fn run_multi_segmented(
+    capacity: usize,
+    num_workers: u16,
+    num_segments: usize,
+) -> Result<Report, Box<dyn std::error::Error>> {
     let f = File::open("../trace-data/S3.lis")?;
     let reader = BufReader::new(f);
     let cache_set = SharedSegmentedMoka::new(capacity, num_segments);
@@ -104,7 +113,7 @@ pub fn run_multi_segmented(capacity: usize, num_workers: u16, num_segments: usiz
 
             std::thread::spawn(move || {
                 let mut parser = parser::ArcTraceParser;
-                let mut report = Report::new(capacity, None);
+                let mut report = Report::new("Moka SegmentedCache", capacity, None);
                 while let Ok(lines) = ch.recv() {
                     for line in lines {
                         if let Ok(entry) = parser.parse(&line) {
@@ -134,7 +143,7 @@ pub fn run_multi_segmented(capacity: usize, num_workers: u16, num_segments: usiz
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.
-    let mut report = Report::new(capacity, Some(num_workers));
+    let mut report = Report::new("Moka SegmentedCache", capacity, Some(num_workers));
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 

@@ -2,6 +2,7 @@ use std::time::Duration;
 
 #[derive(Clone)]
 pub struct Report {
+    pub name: String,
     pub capacity: usize,
     pub num_workers: Option<u16>,
     pub insert_count: usize,
@@ -11,8 +12,9 @@ pub struct Report {
 }
 
 impl Report {
-    pub fn new(capacity: usize, num_workers: Option<u16>) -> Self {
+    pub fn new(name: &str, capacity: usize, num_workers: Option<u16>) -> Self {
         Self {
+            name: name.to_string(),
             capacity,
             num_workers,
             insert_count: 0,
@@ -35,7 +37,7 @@ impl Report {
     // Formatting (CSV)
 
     pub fn cvs_header() -> String {
-        "Cache, Max Capacity, Workers, Inserts, Reads, Hit Rate, Duration Secs".into()
+        "Cache, Max Capacity, Clients, Inserts, Reads, Hit Rate, Duration Secs".into()
     }
 
     pub fn to_csv_record(&self) -> String {
@@ -52,7 +54,8 @@ impl Report {
         };
 
         format!(
-            "Moka, {}, {}, {}, {}, {:.3}, {}",
+            "{}, {}, {}, {}, {}, {:.3}, {}",
+            self.name,
             self.capacity,
             num_workers,
             self.insert_count,

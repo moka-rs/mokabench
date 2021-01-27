@@ -9,7 +9,6 @@ edition = "2018"
 [dependencies]
 crossbeam-channel = "0.4"
 itertools = "0.9"
-moka = { git = "https://github.com/moka-rs/moka" }
-# moka = { git = "https://github.com/moka-rs/moka", rev = "11bcd462cde9" }  # 2020-05-30
-# moka = { path = "../moka" }
+moka = { version = "=0.1.0-beta.1", path = "../moka" }
+# moka = "=0.1.0-beta.1"
 parking_lot = "0.10"
