@@ -1,13 +1,13 @@
 use crate::{parser::ArcTraceEntry, report::Report, TTI_SECS, TTL_SECS};
 
-use moka::sync::{Builder, Cache, ConcurrentCache};
-use std::{collections::hash_map::RandomState, time::Duration};
+use moka::sync::{Builder, Cache};
+use std::{collections::hash_map::RandomState, sync::Arc, time::Duration};
 
 pub trait CacheSet<T> {
     fn process(&mut self, entry: &T, report: &mut Report);
 }
 
-pub struct Moka(Cache<usize, Box<[u8]>, RandomState>);
+pub struct Moka(Cache<usize, Arc<Box<[u8]>>, RandomState>);
 
 impl Clone for Moka {
     fn clone(&self) -> Self {
@@ -18,6 +18,7 @@ impl Clone for Moka {
 impl Moka {
     pub fn new(capacity: usize) -> Self {
         let cache = Builder::new(capacity)
+            .initial_capacity(capacity)
             .time_to_live(Duration::from_secs(TTL_SECS))
             .time_to_idle(Duration::from_secs(TTI_SECS))
             .build();
@@ -31,7 +32,7 @@ impl Moka {
     fn insert(&self, key: usize) {
         let value = vec![0; 512].into_boxed_slice();
         // std::thread::sleep(std::time::Duration::from_micros(500));
-        self.0.insert(key, value);
+        self.0.insert(key, Arc::new(value));
     }
 }
 
