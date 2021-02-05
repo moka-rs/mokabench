@@ -1,6 +1,6 @@
 use crate::{parser::ArcTraceEntry, report::Report, TTI_SECS, TTL_SECS};
 
-use moka::sync::{Builder, Cache};
+use moka::sync::{CacheBuilder, Cache};
 use std::{collections::hash_map::RandomState, sync::Arc, time::Duration};
 
 pub trait CacheSet<T> {
@@ -17,7 +17,7 @@ impl Clone for Moka {
 
 impl Moka {
     pub fn new(capacity: usize) -> Self {
-        let cache = Builder::new(capacity)
+        let cache = CacheBuilder::new(capacity)
             .initial_capacity(capacity)
             .time_to_live(Duration::from_secs(TTL_SECS))
             .time_to_idle(Duration::from_secs(TTI_SECS))

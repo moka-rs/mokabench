@@ -1,6 +1,6 @@
 use crate::{cache_set::CacheSet, parser::ArcTraceEntry, report::Report, TTI_SECS, TTL_SECS};
 
-use moka::sync::{Builder, SegmentedCache};
+use moka::sync::{CacheBuilder, SegmentedCache};
 use std::{collections::hash_map::RandomState, sync::Arc, time::Duration};
 
 pub struct SegmentedMoka(SegmentedCache<usize, Arc<Box<[u8]>>, RandomState>);
@@ -13,7 +13,7 @@ impl Clone for SegmentedMoka {
 
 impl SegmentedMoka {
     pub fn new(capacity: usize, num_segments: usize) -> Self {
-        let cache = Builder::new(capacity)
+        let cache = CacheBuilder::new(capacity)
             .initial_capacity(capacity)
             .segments(num_segments)
             .time_to_live(Duration::from_secs(TTL_SECS))
