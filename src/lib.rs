@@ -2,27 +2,32 @@ use itertools::Itertools;
 use std::io::prelude::*;
 use std::{fs::File, io::BufReader, time::Instant};
 
-mod cache_set;
+mod cache;
 mod parser;
 mod report;
-mod segmented;
 
-use cache_set::{CacheSet, Moka, SharedMoka};
+use cache::{
+    async_cache::SharedAsyncCache,
+    sync_cache::{SharedSyncCache, SyncCache},
+    sync_segmented::SharedSegmentedMoka,
+    AsyncCacheSet, CacheSet,
+};
 use parser::TraceParser;
-use segmented::SharedSegmentedMoka;
 
 pub use report::Report;
+
+pub const TRACE_FILE: &str = "../trace-data/S3.lis";
 
 // pub const TTL_SECS: u64 = 120 * 60;
 // pub const TTI_SECS: u64 = 60 * 60;
 pub const TTL_SECS: u64 = 3;
 pub const TTI_SECS: u64 = 1;
 
-pub fn run_single(capacity: usize) -> Result<Report, Box<dyn std::error::Error>> {
-    let f = File::open("../trace-data/S3.lis")?;
+pub fn run_single(capacity: usize) -> anyhow::Result<Report> {
+    let f = File::open(TRACE_FILE)?;
     let reader = BufReader::new(f);
     let mut parser = parser::ArcTraceParser;
-    let mut cache_set = Moka::new(capacity);
+    let mut cache_set = SyncCache::new(capacity);
     let mut report = Report::new("Moka Cache", capacity, None);
 
     let instant = Instant::now();
@@ -40,10 +45,10 @@ pub fn run_single(capacity: usize) -> Result<Report, Box<dyn std::error::Error>>
     Ok(report)
 }
 
-pub fn run_multi(capacity: usize, num_workers: u16) -> Result<Report, Box<dyn std::error::Error>> {
-    let f = File::open("../trace-data/S3.lis")?;
+pub fn run_multi_threads(capacity: usize, num_workers: u16) -> anyhow::Result<Report> {
+    let f = File::open(TRACE_FILE)?;
     let reader = BufReader::new(f);
-    let cache_set = SharedMoka::new(capacity);
+    let cache_set = SharedSyncCache::new(capacity);
 
     const BATCH_SIZE: usize = 200;
 
@@ -93,12 +98,12 @@ pub fn run_multi(capacity: usize, num_workers: u16) -> Result<Report, Box<dyn st
     Ok(report)
 }
 
-pub fn run_multi_segmented(
+pub fn run_multi_thread_segmented(
     capacity: usize,
     num_workers: u16,
     num_segments: usize,
-) -> Result<Report, Box<dyn std::error::Error>> {
-    let f = File::open("../trace-data/S3.lis")?;
+) -> anyhow::Result<Report> {
+    let f = File::open(TRACE_FILE)?;
     let reader = BufReader::new(f);
     let cache_set = SharedSegmentedMoka::new(capacity, num_segments);
 
@@ -144,6 +149,59 @@ pub fn run_multi_segmented(
 
     // Merge the reports into one.
     let mut report = Report::new("Moka SegmentedCache", capacity, Some(num_workers));
+    report.duration = Some(elapsed);
+    reports.iter().for_each(|r| report.merge(r));
+
+    Ok(report)
+}
+
+pub async fn run_multi_tasks(capacity: usize, num_workers: u16) -> anyhow::Result<Report> {
+    let f = File::open(TRACE_FILE)?;
+    let reader = BufReader::new(f);
+    let cache_set = SharedAsyncCache::new(capacity);
+
+    const BATCH_SIZE: usize = 200;
+
+    let (send, receive) = crossbeam_channel::bounded::<Vec<String>>(100);
+
+    let handles = (0..num_workers)
+        .map(|_| {
+            let mut cache = cache_set.clone();
+            let ch = receive.clone();
+
+            tokio::task::spawn(async move {
+                let mut parser = parser::ArcTraceParser;
+                let mut report = Report::new("Moka Async Cache", capacity, None);
+                while let Ok(lines) = ch.recv() {
+                    for line in lines {
+                        if let Ok(entry) = parser.parse(&line) {
+                            cache.process(&entry, &mut report).await;
+                        }
+                    }
+                }
+                report
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let instant = Instant::now();
+    for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
+        let chunk = chunk.collect::<Result<Vec<String>, _>>()?;
+        send.send(chunk)?;
+    }
+
+    // Drop the sender channel to notify the workers that we are finished.
+    std::mem::drop(send);
+
+    // Wait for the workers to finish and collect their reports.
+    let mut reports = Vec::with_capacity(handles.len());
+    for task in handles {
+        reports.push(task.await.expect("Failed"));
+    }
+    let elapsed = instant.elapsed();
+
+    // Merge the reports into one.
+    let mut report = Report::new("Moka Async Cache", capacity, Some(num_workers));
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 

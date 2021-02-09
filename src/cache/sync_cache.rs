@@ -1,21 +1,22 @@
-use crate::{cache_set::CacheSet, parser::ArcTraceEntry, report::Report, TTI_SECS, TTL_SECS};
+use crate::{parser::ArcTraceEntry, report::Report, TTI_SECS, TTL_SECS};
 
-use moka::sync::{CacheBuilder, SegmentedCache};
+use moka::sync::{Cache, CacheBuilder};
 use std::{collections::hash_map::RandomState, sync::Arc, time::Duration};
 
-pub struct SegmentedMoka(SegmentedCache<usize, Arc<Box<[u8]>>, RandomState>);
+use super::CacheSet;
 
-impl Clone for SegmentedMoka {
+pub struct SyncCache(Cache<usize, Arc<Box<[u8]>>, RandomState>);
+
+impl Clone for SyncCache {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl SegmentedMoka {
-    pub fn new(capacity: usize, num_segments: usize) -> Self {
+impl SyncCache {
+    pub fn new(capacity: usize) -> Self {
         let cache = CacheBuilder::new(capacity)
             .initial_capacity(capacity)
-            .segments(num_segments)
             .time_to_live(Duration::from_secs(TTL_SECS))
             .time_to_idle(Duration::from_secs(TTI_SECS))
             .build();
@@ -33,7 +34,7 @@ impl SegmentedMoka {
     }
 }
 
-impl CacheSet<ArcTraceEntry> for SegmentedMoka {
+impl CacheSet<ArcTraceEntry> for SyncCache {
     fn process(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
         let mut read_count = 0;
         let mut hit_count = 0;
@@ -55,21 +56,21 @@ impl CacheSet<ArcTraceEntry> for SegmentedMoka {
     }
 }
 
-pub struct SharedSegmentedMoka(SegmentedMoka);
+pub struct SharedSyncCache(SyncCache);
 
-impl SharedSegmentedMoka {
-    pub fn new(capacity: usize, num_segments: usize) -> Self {
-        Self(SegmentedMoka::new(capacity, num_segments))
+impl SharedSyncCache {
+    pub fn new(capacity: usize) -> Self {
+        Self(SyncCache::new(capacity))
     }
 }
 
-impl Clone for SharedSegmentedMoka {
+impl Clone for SharedSyncCache {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl CacheSet<ArcTraceEntry> for SharedSegmentedMoka {
+impl CacheSet<ArcTraceEntry> for SharedSyncCache {
     fn process(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
         self.0.process(entry, report)
     }

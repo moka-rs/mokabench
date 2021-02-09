@@ -1,24 +1,21 @@
-use crate::{parser::ArcTraceEntry, report::Report, TTI_SECS, TTL_SECS};
+use crate::{cache::CacheSet, parser::ArcTraceEntry, report::Report, TTI_SECS, TTL_SECS};
 
-use moka::sync::{CacheBuilder, Cache};
+use moka::sync::{CacheBuilder, SegmentedCache};
 use std::{collections::hash_map::RandomState, sync::Arc, time::Duration};
 
-pub trait CacheSet<T> {
-    fn process(&mut self, entry: &T, report: &mut Report);
-}
+pub struct SegmentedMoka(SegmentedCache<usize, Arc<Box<[u8]>>, RandomState>);
 
-pub struct Moka(Cache<usize, Arc<Box<[u8]>>, RandomState>);
-
-impl Clone for Moka {
+impl Clone for SegmentedMoka {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl Moka {
-    pub fn new(capacity: usize) -> Self {
+impl SegmentedMoka {
+    pub fn new(capacity: usize, num_segments: usize) -> Self {
         let cache = CacheBuilder::new(capacity)
             .initial_capacity(capacity)
+            .segments(num_segments)
             .time_to_live(Duration::from_secs(TTL_SECS))
             .time_to_idle(Duration::from_secs(TTI_SECS))
             .build();
@@ -36,7 +33,7 @@ impl Moka {
     }
 }
 
-impl CacheSet<ArcTraceEntry> for Moka {
+impl CacheSet<ArcTraceEntry> for SegmentedMoka {
     fn process(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
         let mut read_count = 0;
         let mut hit_count = 0;
@@ -58,21 +55,21 @@ impl CacheSet<ArcTraceEntry> for Moka {
     }
 }
 
-pub struct SharedMoka(Moka);
+pub struct SharedSegmentedMoka(SegmentedMoka);
 
-impl SharedMoka {
-    pub fn new(capacity: usize) -> Self {
-        Self(Moka::new(capacity))
+impl SharedSegmentedMoka {
+    pub fn new(capacity: usize, num_segments: usize) -> Self {
+        Self(SegmentedMoka::new(capacity, num_segments))
     }
 }
 
-impl Clone for SharedMoka {
+impl Clone for SharedSegmentedMoka {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl CacheSet<ArcTraceEntry> for SharedMoka {
+impl CacheSet<ArcTraceEntry> for SharedSegmentedMoka {
     fn process(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
         self.0.process(entry, report)
     }
