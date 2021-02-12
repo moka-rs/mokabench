@@ -12,8 +12,8 @@ async-trait = "0.1"
 crossbeam-channel = "0.4"
 futures = "0.3"
 itertools = "0.9"
-moka = { version = "0.2", path = "../moka", features = ["future"] }
-# moka = { version = "0.2", features = ["future"] }
+# moka = { version = "0.2", path = "../moka", features = ["future"] }
+moka = { version = "0.2", features = ["future"] }
 parking_lot = "0.10"
 
 # actix-rt = "2"
