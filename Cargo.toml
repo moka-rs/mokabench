@@ -10,8 +10,13 @@ edition = "2018"
 anyhow = "1.0"
 async-trait = "0.1"
 crossbeam-channel = "0.4"
+futures = "0.3"
 itertools = "0.9"
-moka = { version = "0.2", path = "../moka", features = ["runtime-tokio"] }
-# moka = { version = "0.2", features = ["runtime-tokio"] }
+moka = { version = "0.2", path = "../moka", features = ["future"] }
+# moka = { version = "0.2", features = ["future"] }
 parking_lot = "0.10"
-tokio = { version = "1.2", features = ["rt-multi-thread", "macros" ] }
+
+# actix-rt = "2"
+# actix-rt = "1"
+# async-std = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros" ] }

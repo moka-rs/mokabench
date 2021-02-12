@@ -194,16 +194,13 @@ pub async fn run_multi_tasks(capacity: usize, num_workers: u16) -> anyhow::Resul
     std::mem::drop(send);
 
     // Wait for the workers to finish and collect their reports.
-    let mut reports = Vec::with_capacity(handles.len());
-    for task in handles {
-        reports.push(task.await.expect("Failed"));
-    }
+    let reports = futures::future::join_all(handles).await;
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.
     let mut report = Report::new("Moka Async Cache", capacity, Some(num_workers));
     report.duration = Some(elapsed);
-    reports.iter().for_each(|r| report.merge(r));
+    reports.iter().for_each(|r| report.merge(r.as_ref().expect("Failed")));
 
     Ok(report)
 }
