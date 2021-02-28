@@ -2,6 +2,7 @@
     "cSpell.words": [
         "itertools",
         "moka",
-        "mokabench"
+        "mokabench",
+        "unsync"
     ]
 }

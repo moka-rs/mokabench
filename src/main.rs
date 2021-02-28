@@ -17,8 +17,8 @@ async fn run_with_capacity(capacity: usize) -> Result<(), Box<dyn std::error::Er
     // const NUM_WORKERS_ARRAY: [u16; 6] = [1, 2, 4, 8, 16, 32];
     const NUM_WORKERS_ARRAY: [u16; 5] = [16, 24, 32, 40, 48];
 
-    // let report = mokabench::run_single(capacity)?;
-    // println!("{}", report.to_csv_record());
+    let report = mokabench::run_single(capacity)?;
+    println!("{}", report.to_csv_record());
 
     for num_workers in &NUM_WORKERS_ARRAY {
         let report = mokabench::run_multi_threads(capacity, *num_workers)?;

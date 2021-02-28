@@ -7,10 +7,8 @@ mod parser;
 mod report;
 
 use cache::{
-    async_cache::SharedAsyncCache,
-    sync_cache::{SharedSyncCache, SyncCache},
-    sync_segmented::SharedSegmentedMoka,
-    AsyncCacheSet, CacheSet,
+    async_cache::SharedAsyncCache, sync_cache::SharedSyncCache,
+    sync_segmented::SharedSegmentedMoka, unsync_cache::UnsyncCache, AsyncCacheSet, CacheSet,
 };
 use parser::TraceParser;
 
@@ -27,8 +25,8 @@ pub fn run_single(capacity: usize) -> anyhow::Result<Report> {
     let f = File::open(TRACE_FILE)?;
     let reader = BufReader::new(f);
     let mut parser = parser::ArcTraceParser;
-    let mut cache_set = SyncCache::new(capacity);
-    let mut report = Report::new("Moka Cache", capacity, None);
+    let mut cache_set = UnsyncCache::new(capacity);
+    let mut report = Report::new("Moka Unsync Cache", capacity, None);
 
     let instant = Instant::now();
     let lines = reader.lines().enumerate().map(|(c, l)| (c + 1, l));
@@ -200,7 +198,9 @@ pub async fn run_multi_tasks(capacity: usize, num_workers: u16) -> anyhow::Resul
     // Merge the reports into one.
     let mut report = Report::new("Moka Async Cache", capacity, Some(num_workers));
     report.duration = Some(elapsed);
-    reports.iter().for_each(|r| report.merge(r.as_ref().expect("Failed")));
+    reports
+        .iter()
+        .for_each(|r| report.merge(r.as_ref().expect("Failed")));
 
     Ok(report)
 }
