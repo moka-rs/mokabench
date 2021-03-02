@@ -9,12 +9,13 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0"
 async-trait = "0.1"
-crossbeam-channel = "0.4"
+clap = "2.33"
+crossbeam-channel = "0.5"
 futures = "0.3"
-itertools = "0.9"
-# moka = { version = "0.2", path = "../moka", features = ["future"] }
-moka = { version = "0.2", features = ["future"] }
-parking_lot = "0.10"
+itertools = "0.10"
+# moka = { version = "0.3", path = "../moka", features = ["future"] }
+moka = { version = "0.3", features = ["future"] }
+parking_lot = "0.11"
 
 # actix-rt = "2"
 # actix-rt = "1"

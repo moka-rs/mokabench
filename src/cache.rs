@@ -8,10 +8,14 @@ pub(crate) mod sync_segmented;
 pub(crate) mod unsync_cache;
 
 pub trait CacheSet<T> {
-    fn process(&mut self, entry: &T, report: &mut Report);
+    fn get_or_insert(&mut self, entry: &T, report: &mut Report);
+    fn invalidate(&mut self, entry: &T);
+    fn invalidate_all(&mut self);
 }
 
 #[async_trait]
 pub trait AsyncCacheSet<T> {
-    async fn process(&mut self, entry: &T, report: &mut Report);
+    async fn get_or_insert(&mut self, entry: &T, report: &mut Report);
+    async fn invalidate(&mut self, entry: &T);
+    fn invalidate_all(&mut self);
 }

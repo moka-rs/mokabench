@@ -1,8 +1,11 @@
+use config::Config;
+use crossbeam_channel::Receiver;
 use itertools::Itertools;
 use std::io::prelude::*;
 use std::{fs::File, io::BufReader, time::Instant};
 
 mod cache;
+pub mod config;
 mod parser;
 mod report;
 
@@ -10,31 +13,40 @@ use cache::{
     async_cache::SharedAsyncCache, sync_cache::SharedSyncCache,
     sync_segmented::SharedSegmentedMoka, unsync_cache::UnsyncCache, AsyncCacheSet, CacheSet,
 };
-use parser::TraceParser;
+use parser::{ArcTraceEntry, TraceParser};
 
 pub use report::Report;
 
-pub const TRACE_FILE: &str = "../trace-data/S3.lis";
+pub const TRACE_FILE: &str = "./datasets/S3.lis";
 
-// pub const TTL_SECS: u64 = 120 * 60;
-// pub const TTI_SECS: u64 = 60 * 60;
-pub const TTL_SECS: u64 = 3;
-pub const TTI_SECS: u64 = 1;
+pub(crate) enum Op {
+    GetOrInsert(String),
+    Invalidate(String),
+    InvalidateAll,
+}
 
-pub fn run_single(capacity: usize) -> anyhow::Result<Report> {
+pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
     let f = File::open(TRACE_FILE)?;
     let reader = BufReader::new(f);
     let mut parser = parser::ArcTraceParser;
-    let mut cache_set = UnsyncCache::new(capacity);
+    let mut cache_set = UnsyncCache::new(config, capacity);
     let mut report = Report::new("Moka Unsync Cache", capacity, None);
+    let mut counter = 0;
 
     let instant = Instant::now();
-    let lines = reader.lines().enumerate().map(|(c, l)| (c + 1, l));
 
-    for (_count, line) in lines {
+    for line in reader.lines() {
         let line = line?;
+        counter += 1;
         let entry = parser.parse(&line)?;
-        cache_set.process(&entry, &mut report);
+        if config.enable_invalidate_all && counter % 100_000 == 0 {
+            cache_set.invalidate_all();
+            cache_set.get_or_insert(&entry, &mut report);
+        } else if config.enable_invalidate && counter % 8 == 0 {
+            cache_set.invalidate(&entry);
+        } else {
+            cache_set.get_or_insert(&entry, &mut report);
+        }
     }
 
     let elapsed = instant.elapsed();
@@ -43,14 +55,94 @@ pub fn run_single(capacity: usize) -> anyhow::Result<Report> {
     Ok(report)
 }
 
-pub fn run_multi_threads(capacity: usize, num_workers: u16) -> anyhow::Result<Report> {
+fn generate_commands<I>(
+    config: &Config,
+    max_chunk_size: usize,
+    counter: &mut usize,
+    chunk: I,
+) -> anyhow::Result<Vec<Op>>
+where
+    I: Iterator<Item = std::io::Result<String>>,
+{
+    let mut ops = Vec::with_capacity(max_chunk_size);
+    for line in chunk {
+        let line = line?;
+        *counter += 1;
+        if config.enable_invalidate_all && *counter % 100_000 == 0 {
+            ops.push(Op::InvalidateAll);
+            ops.push(Op::GetOrInsert(line));
+        } else if config.enable_invalidate && *counter % 8 == 0 {
+            ops.push(Op::Invalidate(line));
+        } else {
+            ops.push(Op::GetOrInsert(line));
+        }
+    }
+    Ok(ops)
+}
+
+fn process_commands(
+    receiver: Receiver<Vec<Op>>,
+    cache: &mut impl CacheSet<ArcTraceEntry>,
+    report: &mut Report,
+) {
+    let mut parser = parser::ArcTraceParser;
+    while let Ok(ops) = receiver.recv() {
+        for op in ops {
+            match op {
+                Op::GetOrInsert(line) => {
+                    if let Ok(entry) = parser.parse(&line) {
+                        cache.get_or_insert(&entry, report);
+                    }
+                }
+                Op::Invalidate(line) => {
+                    if let Ok(entry) = parser.parse(&line) {
+                        cache.invalidate(&entry);
+                    }
+                }
+                Op::InvalidateAll => cache.invalidate_all(),
+            }
+        }
+    }
+}
+
+async fn process_commands_async(
+    receiver: Receiver<Vec<Op>>,
+    cache: &mut impl AsyncCacheSet<ArcTraceEntry>,
+    report: &mut Report,
+) {
+    let mut parser = parser::ArcTraceParser;
+    while let Ok(ops) = receiver.recv() {
+        for op in ops {
+            match op {
+                Op::GetOrInsert(line) => {
+                    if let Ok(entry) = parser.parse(&line) {
+                        cache.get_or_insert(&entry, report).await;
+                    }
+                }
+                Op::Invalidate(line) => {
+                    if let Ok(entry) = parser.parse(&line) {
+                        cache.invalidate(&entry).await;
+                    }
+                }
+                Op::InvalidateAll => cache.invalidate_all(),
+            }
+        }
+    }
+}
+
+#[allow(clippy::needless_collect)] // on the `handles` variable.
+pub fn run_multi_threads(
+    config: &Config,
+    capacity: usize,
+    num_workers: u16,
+) -> anyhow::Result<Report> {
     let f = File::open(TRACE_FILE)?;
     let reader = BufReader::new(f);
-    let cache_set = SharedSyncCache::new(capacity);
+    let cache_set = SharedSyncCache::new(config, capacity);
 
     const BATCH_SIZE: usize = 200;
 
-    let (send, receive) = crossbeam_channel::bounded::<Vec<String>>(100);
+    let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
 
     let handles = (0..num_workers)
         .map(|_| {
@@ -58,24 +150,18 @@ pub fn run_multi_threads(capacity: usize, num_workers: u16) -> anyhow::Result<Re
             let ch = receive.clone();
 
             std::thread::spawn(move || {
-                let mut parser = parser::ArcTraceParser;
                 let mut report = Report::new("Moka Cache", capacity, None);
-                while let Ok(lines) = ch.recv() {
-                    for line in lines {
-                        if let Ok(entry) = parser.parse(&line) {
-                            cache.process(&entry, &mut report);
-                        }
-                    }
-                }
+                process_commands(ch, &mut cache, &mut report);
                 report
             })
         })
         .collect::<Vec<_>>();
 
+    let mut counter = 0;
     let instant = Instant::now();
     for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-        let chunk = chunk.collect::<Result<Vec<String>, _>>()?;
-        send.send(chunk)?;
+        let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
+        send.send(commands)?;
     }
 
     // Drop the sender channel to notify the workers that we are finished.
@@ -96,18 +182,20 @@ pub fn run_multi_threads(capacity: usize, num_workers: u16) -> anyhow::Result<Re
     Ok(report)
 }
 
+#[allow(clippy::needless_collect)] // on the `handles` variable.
 pub fn run_multi_thread_segmented(
+    config: &Config,
     capacity: usize,
     num_workers: u16,
     num_segments: usize,
 ) -> anyhow::Result<Report> {
     let f = File::open(TRACE_FILE)?;
     let reader = BufReader::new(f);
-    let cache_set = SharedSegmentedMoka::new(capacity, num_segments);
+    let cache_set = SharedSegmentedMoka::new(config, capacity, num_segments);
 
     const BATCH_SIZE: usize = 200;
 
-    let (send, receive) = crossbeam_channel::bounded::<Vec<String>>(100);
+    let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
 
     let handles = (0..num_workers)
         .map(|_| {
@@ -115,24 +203,18 @@ pub fn run_multi_thread_segmented(
             let ch = receive.clone();
 
             std::thread::spawn(move || {
-                let mut parser = parser::ArcTraceParser;
                 let mut report = Report::new("Moka SegmentedCache", capacity, None);
-                while let Ok(lines) = ch.recv() {
-                    for line in lines {
-                        if let Ok(entry) = parser.parse(&line) {
-                            cache.process(&entry, &mut report);
-                        }
-                    }
-                }
+                process_commands(ch, &mut cache, &mut report);
                 report
             })
         })
         .collect::<Vec<_>>();
 
+    let mut counter = 0;
     let instant = Instant::now();
     for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-        let chunk = chunk.collect::<Result<Vec<String>, _>>()?;
-        send.send(chunk)?;
+        let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
+        send.send(commands)?;
     }
 
     // Drop the sender channel to notify the workers that we are finished.
@@ -153,14 +235,18 @@ pub fn run_multi_thread_segmented(
     Ok(report)
 }
 
-pub async fn run_multi_tasks(capacity: usize, num_workers: u16) -> anyhow::Result<Report> {
+pub async fn run_multi_tasks(
+    config: &Config,
+    capacity: usize,
+    num_workers: u16,
+) -> anyhow::Result<Report> {
     let f = File::open(TRACE_FILE)?;
     let reader = BufReader::new(f);
-    let cache_set = SharedAsyncCache::new(capacity);
+    let cache_set = SharedAsyncCache::new(config, capacity);
 
     const BATCH_SIZE: usize = 200;
 
-    let (send, receive) = crossbeam_channel::bounded::<Vec<String>>(100);
+    let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
 
     let handles = (0..num_workers)
         .map(|_| {
@@ -168,24 +254,18 @@ pub async fn run_multi_tasks(capacity: usize, num_workers: u16) -> anyhow::Resul
             let ch = receive.clone();
 
             tokio::task::spawn(async move {
-                let mut parser = parser::ArcTraceParser;
                 let mut report = Report::new("Moka Async Cache", capacity, None);
-                while let Ok(lines) = ch.recv() {
-                    for line in lines {
-                        if let Ok(entry) = parser.parse(&line) {
-                            cache.process(&entry, &mut report).await;
-                        }
-                    }
-                }
+                process_commands_async(ch, &mut cache, &mut report).await;
                 report
             })
         })
         .collect::<Vec<_>>();
 
+    let mut counter = 0;
     let instant = Instant::now();
     for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-        let chunk = chunk.collect::<Result<Vec<String>, _>>()?;
-        send.send(chunk)?;
+        let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
+        send.send(commands)?;
     }
 
     // Drop the sender channel to notify the workers that we are finished.

@@ -1,39 +1,89 @@
-use mokabench::{self, Report};
+use mokabench::{self, config::Config, Report};
+
+use clap::{App, Arg};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
+    let config = create_config()?;
+
     println!("{}", Report::cvs_header());
 
     const CAPACITIES: [usize; 2] = [100_000, 2_000_000];
 
     for capacity in &CAPACITIES {
-        run_with_capacity(*capacity).await?
+        run_with_capacity(&config, *capacity).await?
     }
 
     Ok(())
 }
 
-async fn run_with_capacity(capacity: usize) -> Result<(), Box<dyn std::error::Error>> {
+fn create_config() -> anyhow::Result<Config> {
+    let matches = App::new("Moka Bench")
+        .arg(
+            Arg::with_name("ttl")
+                .long("ttl")
+                .help("Time-to-live in seconds")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("tti")
+                .long("tti")
+                .help("Time-to-idle in seconds")
+                .takes_value(true),
+        )
+        .arg(Arg::with_name("enable-invalidate").long("enable-invalidate"))
+        .arg(Arg::with_name("enable-invalidate-all").long("enable-invalidate-all"))
+        .get_matches();
+
+    let ttl = match matches.value_of("ttl") {
+        None => None,
+        Some(v) => Some(
+            v.parse()
+                .map_err(|e| anyhow::anyhow!(r#"Cannot parse ttl "{}" as an integer: {}"#, v, e))?,
+        ),
+    };
+
+    let tti = match matches.value_of("tti") {
+        None => None,
+        Some(v) => Some(
+            v.parse()
+                .map_err(|e| anyhow::anyhow!(r#"Cannot parse tti "{}" as an integer: {}"#, v, e))?,
+        ),
+    };
+
+    let enable_invalidate = matches.is_present("enable-invalidate");
+    let enable_invalidate_all = matches.is_present("enable-invalidate-all");
+
+    Ok(Config::new(
+        ttl,
+        tti,
+        enable_invalidate,
+        enable_invalidate_all,
+    ))
+}
+
+async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<()> {
     // const NUM_WORKERS_ARRAY: [u16; 6] = [1, 2, 4, 8, 16, 32];
     const NUM_WORKERS_ARRAY: [u16; 5] = [16, 24, 32, 40, 48];
 
-    let report = mokabench::run_single(capacity)?;
+    let report = mokabench::run_single(config, capacity)?;
     println!("{}", report.to_csv_record());
 
     for num_workers in &NUM_WORKERS_ARRAY {
-        let report = mokabench::run_multi_threads(capacity, *num_workers)?;
+        let report = mokabench::run_multi_threads(config, capacity, *num_workers)?;
         println!("{}", report.to_csv_record());
     }
 
     for num_workers in &NUM_WORKERS_ARRAY {
-        let report = mokabench::run_multi_tasks(capacity, *num_workers).await?;
+        let report = mokabench::run_multi_tasks(config, capacity, *num_workers).await?;
         println!("{}", report.to_csv_record());
     }
 
     let num_segments = 8;
 
     for num_workers in &NUM_WORKERS_ARRAY {
-        let report = mokabench::run_multi_thread_segmented(capacity, *num_workers, num_segments)?;
+        let report =
+            mokabench::run_multi_thread_segmented(config, capacity, *num_workers, num_segments)?;
         println!("{}", report.to_csv_record());
     }
 

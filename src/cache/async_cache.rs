@@ -1,42 +1,53 @@
 use super::AsyncCacheSet;
-use crate::{parser::ArcTraceEntry, report::Report, TTI_SECS, TTL_SECS};
+use crate::{config::Config, parser::ArcTraceEntry, report::Report};
 
 use async_trait::async_trait;
 use moka::future::{Cache, CacheBuilder};
-use std::{collections::hash_map::RandomState, sync::Arc, time::Duration};
+use std::{collections::hash_map::RandomState, sync::Arc};
 
-pub struct AsyncCache(Cache<usize, Arc<Box<[u8]>>, RandomState>);
+pub struct AsyncCache {
+    _config: Config,
+    cache: Cache<usize, Arc<Box<[u8]>>, RandomState>,
+}
 
 impl Clone for AsyncCache {
     fn clone(&self) -> Self {
-        Self(self.0.clone())
+        Self {
+            _config: self._config.clone(),
+            cache: self.cache.clone(),
+        }
     }
 }
 
 impl AsyncCache {
-    pub fn new(capacity: usize) -> Self {
-        let cache = CacheBuilder::new(capacity)
-            .initial_capacity(capacity)
-            .time_to_live(Duration::from_secs(TTL_SECS))
-            .time_to_idle(Duration::from_secs(TTI_SECS))
-            .build();
-        Self(cache)
+    pub fn new(config: &Config, capacity: usize) -> Self {
+        let mut builder = CacheBuilder::new(capacity).initial_capacity(capacity);
+        if let Some(ttl) = config.ttl {
+            builder = builder.time_to_live(ttl);
+        }
+        if let Some(tti) = config.tti {
+            builder = builder.time_to_idle(tti)
+        }
+        Self {
+            _config: config.clone(),
+            cache: builder.build(),
+        }
     }
 
     fn get(&self, key: usize) -> bool {
-        self.0.get(&key).is_some()
+        self.cache.get(&key).is_some()
     }
 
     async fn insert(&self, key: usize) {
         let value = vec![0; 512].into_boxed_slice();
         // tokio::task::sleep(std::time::Duration::from_micros(500));
-        self.0.insert(key, Arc::new(value)).await;
+        self.cache.insert(key, Arc::new(value)).await;
     }
 }
 
 #[async_trait]
 impl AsyncCacheSet<ArcTraceEntry> for AsyncCache {
-    async fn process(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+    async fn get_or_insert(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
         let mut read_count = 0;
         let mut hit_count = 0;
         let mut insert_count = 0;
@@ -55,13 +66,23 @@ impl AsyncCacheSet<ArcTraceEntry> for AsyncCache {
         report.hit_count += hit_count;
         report.insert_count += insert_count;
     }
+
+    async fn invalidate(&mut self, entry: &ArcTraceEntry) {
+        for block in entry.0.clone() {
+            self.cache.invalidate(&block).await;
+        }
+    }
+
+    fn invalidate_all(&mut self) {
+        self.cache.invalidate_all();
+    }
 }
 
 pub struct SharedAsyncCache(AsyncCache);
 
 impl SharedAsyncCache {
-    pub fn new(capacity: usize) -> Self {
-        Self(AsyncCache::new(capacity))
+    pub fn new(config: &Config, capacity: usize) -> Self {
+        Self(AsyncCache::new(config, capacity))
     }
 }
 
@@ -73,7 +94,15 @@ impl Clone for SharedAsyncCache {
 
 #[async_trait]
 impl AsyncCacheSet<ArcTraceEntry> for SharedAsyncCache {
-    async fn process(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
-        self.0.process(entry, report).await
+    async fn get_or_insert(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+        self.0.get_or_insert(entry, report).await
+    }
+
+    async fn invalidate(&mut self, entry: &ArcTraceEntry) {
+        self.0.invalidate(entry).await;
+    }
+
+    fn invalidate_all(&mut self) {
+        self.0.invalidate_all();
     }
 }

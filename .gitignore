@@ -1,4 +1,5 @@
 **/*.rs.bk
 **/*~
+/datasets/
 .DS_Store
 /target/
