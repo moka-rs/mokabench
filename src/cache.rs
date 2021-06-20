@@ -11,6 +11,7 @@ pub trait CacheSet<T> {
     fn get_or_insert(&mut self, entry: &T, report: &mut Report);
     fn invalidate(&mut self, entry: &T);
     fn invalidate_all(&mut self);
+    fn invalidate_entries_if(&mut self, entry: &T);
 }
 
 #[async_trait]
@@ -18,4 +19,13 @@ pub trait AsyncCacheSet<T> {
     async fn get_or_insert(&mut self, entry: &T, report: &mut Report);
     async fn invalidate(&mut self, entry: &T);
     fn invalidate_all(&mut self);
+    fn invalidate_entries_if(&mut self, entry: &T);
+}
+
+const VALUE_LEN: usize = 256;
+
+pub(crate) fn make_value(key: usize) -> Box<[u8]> {
+    let mut value = vec![0; VALUE_LEN].into_boxed_slice();
+    value[0] = (key % 256) as u8;
+    value
 }

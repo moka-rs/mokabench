@@ -30,9 +30,16 @@ impl UnsyncCache {
     }
 
     fn insert(&mut self, key: usize) {
-        let value = vec![0; 512].into_boxed_slice();
+        let value = super::make_value(key);
         // std::thread::sleep(std::time::Duration::from_micros(500));
         self.cache.insert(key, Arc::new(value));
+    }
+
+    fn invalidate_entries_if(&mut self, entry: &ArcTraceEntry) {
+        for block in entry.0.clone() {
+            self.cache
+                .invalidate_entries_if(move |_k, v| v[0] == (block % 256) as u8)
+        }
     }
 }
 
@@ -65,5 +72,9 @@ impl CacheSet<ArcTraceEntry> for UnsyncCache {
 
     fn invalidate_all(&mut self) {
         self.cache.invalidate_all();
+    }
+
+    fn invalidate_entries_if(&mut self, entry: &ArcTraceEntry) {
+        self.invalidate_entries_if(entry);
     }
 }

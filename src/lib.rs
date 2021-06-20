@@ -23,6 +23,7 @@ pub(crate) enum Op {
     GetOrInsert(String),
     Invalidate(String),
     InvalidateAll,
+    InvalidateEntriesIf(String),
 }
 
 pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
@@ -71,6 +72,8 @@ where
         if config.enable_invalidate_all && *counter % 100_000 == 0 {
             ops.push(Op::InvalidateAll);
             ops.push(Op::GetOrInsert(line));
+        } else if config.enable_invalidate_entries_if && *counter % 5_000 == 0 {
+            ops.push(Op::InvalidateEntriesIf(line));
         } else if config.enable_invalidate && *counter % 8 == 0 {
             ops.push(Op::Invalidate(line));
         } else {
@@ -100,6 +103,11 @@ fn process_commands(
                     }
                 }
                 Op::InvalidateAll => cache.invalidate_all(),
+                Op::InvalidateEntriesIf(line) => {
+                    if let Ok(entry) = parser.parse(&line) {
+                        cache.invalidate_entries_if(&entry);
+                    }
+                }
             }
         }
     }
@@ -125,6 +133,11 @@ async fn process_commands_async(
                     }
                 }
                 Op::InvalidateAll => cache.invalidate_all(),
+                Op::InvalidateEntriesIf(line) => {
+                    if let Ok(entry) = parser.parse(&line) {
+                        cache.invalidate_entries_if(&entry);
+                    }
+                }
             }
         }
     }

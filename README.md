@@ -33,8 +33,11 @@ $ cargo run --release -- --enable-invalidate
 ## Call `get`, `insert` and `invalidate_all`.
 $ cargo run --release -- --enable-invalidate-all
 
+## Call `get`, `insert` and `invalidate_entries-if`.
+$ cargo run --release -- --enable-invalidate-entries-if
+
 ## Run with everything.
-$ cargo run --release -- --ttl 3 --tti 1 --enable-invalidate --enable-invalidate-all
+$ cargo run --release -- --ttl 3 --tti 1 --enable-invalidate --enable-invalidate-all --enable-invalidate-entries-if
 ```
 
 [arc-paper-site]: https://researcher.watson.ibm.com/researcher/view_person_subpage.php?id=4700

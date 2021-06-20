@@ -28,6 +28,10 @@ impl AsyncCache {
         if let Some(tti) = config.tti {
             builder = builder.time_to_idle(tti)
         }
+        if config.enable_invalidate_entries_if {
+            builder = builder.support_invalidation_closures();
+        }
+
         Self {
             _config: config.clone(),
             cache: builder.build(),
@@ -39,7 +43,7 @@ impl AsyncCache {
     }
 
     async fn insert(&self, key: usize) {
-        let value = vec![0; 512].into_boxed_slice();
+        let value = super::make_value(key);
         // tokio::task::sleep(std::time::Duration::from_micros(500));
         self.cache.insert(key, Arc::new(value)).await;
     }
@@ -76,6 +80,14 @@ impl AsyncCacheSet<ArcTraceEntry> for AsyncCache {
     fn invalidate_all(&mut self) {
         self.cache.invalidate_all();
     }
+
+    fn invalidate_entries_if(&mut self, entry: &ArcTraceEntry) {
+        for block in entry.0.clone() {
+            self.cache
+                .invalidate_entries_if(move |_k, v| v[0] == (block % 256) as u8)
+                .expect("invalidate_entries_if failed");
+        }
+    }
 }
 
 pub struct SharedAsyncCache(AsyncCache);
@@ -104,5 +116,9 @@ impl AsyncCacheSet<ArcTraceEntry> for SharedAsyncCache {
 
     fn invalidate_all(&mut self) {
         self.0.invalidate_all();
+    }
+
+    fn invalidate_entries_if(&mut self, entry: &ArcTraceEntry) {
+        self.0.invalidate_entries_if(entry);
     }
 }

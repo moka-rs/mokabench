@@ -33,6 +33,7 @@ fn create_config() -> anyhow::Result<Config> {
         )
         .arg(Arg::with_name("enable-invalidate").long("enable-invalidate"))
         .arg(Arg::with_name("enable-invalidate-all").long("enable-invalidate-all"))
+        .arg(Arg::with_name("enable-invalidate-entries-if").long("enable-invalidate-entries-if"))
         .get_matches();
 
     let ttl = match matches.value_of("ttl") {
@@ -53,12 +54,14 @@ fn create_config() -> anyhow::Result<Config> {
 
     let enable_invalidate = matches.is_present("enable-invalidate");
     let enable_invalidate_all = matches.is_present("enable-invalidate-all");
+    let enable_invalidate_entries_if = matches.is_present("enable-invalidate-entries-if");
 
     Ok(Config::new(
         ttl,
         tti,
         enable_invalidate,
         enable_invalidate_all,
+        enable_invalidate_entries_if,
     ))
 }
 
