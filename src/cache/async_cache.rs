@@ -1,8 +1,9 @@
-use super::AsyncCacheSet;
+use super::{AsyncCacheSet, Counters};
 use crate::{config::Config, parser::ArcTraceEntry, report::Report};
 
 use async_trait::async_trait;
 use moka::future::{Cache, CacheBuilder};
+use parking_lot::RwLock;
 use std::{collections::hash_map::RandomState, sync::Arc};
 
 pub struct AsyncCache {
@@ -47,28 +48,42 @@ impl AsyncCache {
         // tokio::task::sleep(std::time::Duration::from_micros(500));
         self.cache.insert(key, Arc::new(value)).await;
     }
+
+    async fn get_or_insert_with(&self, key: usize, counters: Arc<RwLock<Counters>>) {
+        self.cache
+            .get_or_insert_with(key, async {
+                counters.write().inserted();
+                Arc::new(super::make_value(key))
+            })
+            .await;
+    }
 }
 
 #[async_trait]
 impl AsyncCacheSet<ArcTraceEntry> for AsyncCache {
     async fn get_or_insert(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
-        let mut read_count = 0;
-        let mut hit_count = 0;
-        let mut insert_count = 0;
+        let mut counters = Counters::default();
 
         for block in entry.0.clone() {
-            if self.get(block) {
-                hit_count += 1;
-            } else {
+            if !self.get(block) {
                 self.insert(block).await;
-                insert_count += 1;
+                counters.inserted();
             }
-            read_count += 1;
+            counters.read();
         }
 
-        report.read_count += read_count;
-        report.hit_count += hit_count;
-        report.insert_count += insert_count;
+        counters.add_to_report(report);
+    }
+
+    async fn get_or_insert_once(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+        let counters = Arc::new(RwLock::new(Counters::default()));
+
+        for block in entry.0.clone() {
+            self.get_or_insert_with(block, Arc::clone(&counters)).await;
+            counters.write().read();
+        }
+
+        counters.read().add_to_report(report);
     }
 
     async fn invalidate(&mut self, entry: &ArcTraceEntry) {
@@ -108,6 +123,10 @@ impl Clone for SharedAsyncCache {
 impl AsyncCacheSet<ArcTraceEntry> for SharedAsyncCache {
     async fn get_or_insert(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
         self.0.get_or_insert(entry, report).await
+    }
+
+    async fn get_or_insert_once(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+        self.0.get_or_insert_once(entry, report).await
     }
 
     async fn invalidate(&mut self, entry: &ArcTraceEntry) {

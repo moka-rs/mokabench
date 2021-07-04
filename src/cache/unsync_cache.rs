@@ -3,7 +3,7 @@ use crate::{config::Config, parser::ArcTraceEntry, report::Report};
 use moka::unsync::{Cache, CacheBuilder};
 use std::{collections::hash_map::RandomState, sync::Arc};
 
-use super::CacheSet;
+use super::{CacheSet, Counters};
 
 pub struct UnsyncCache {
     _config: Config,
@@ -45,23 +45,21 @@ impl UnsyncCache {
 
 impl CacheSet<ArcTraceEntry> for UnsyncCache {
     fn get_or_insert(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
-        let mut read_count = 0;
-        let mut hit_count = 0;
-        let mut insert_count = 0;
+        let mut counters = Counters::default();
 
         for block in entry.0.clone() {
-            if self.get(&block) {
-                hit_count += 1;
-            } else {
+            if !self.get(&block) {
                 self.insert(block);
-                insert_count += 1;
+                counters.inserted();
             }
-            read_count += 1;
+            counters.read();
         }
 
-        report.read_count += read_count;
-        report.hit_count += hit_count;
-        report.insert_count += insert_count;
+        counters.add_to_report(report);
+    }
+
+    fn get_or_insert_once(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+        self.get_or_insert(entry, report);
     }
 
     fn invalidate(&mut self, entry: &ArcTraceEntry) {

@@ -1,7 +1,10 @@
 use crate::{cache::CacheSet, config::Config, parser::ArcTraceEntry, report::Report};
 
 use moka::sync::{CacheBuilder, SegmentedCache};
+use parking_lot::RwLock;
 use std::{collections::hash_map::RandomState, sync::Arc};
+
+use super::Counters;
 
 pub struct SegmentedMoka {
     _config: Config,
@@ -47,27 +50,39 @@ impl SegmentedMoka {
         // std::thread::sleep(std::time::Duration::from_micros(500));
         self.cache.insert(key, Arc::new(value));
     }
+
+    fn get_or_insert_with(&self, key: usize, counters: Arc<RwLock<Counters>>) {
+        self.cache.get_or_insert_with(key, || {
+            counters.write().inserted();
+            Arc::new(super::make_value(key))
+        });
+    }
 }
 
 impl CacheSet<ArcTraceEntry> for SegmentedMoka {
     fn get_or_insert(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
-        let mut read_count = 0;
-        let mut hit_count = 0;
-        let mut insert_count = 0;
+        let mut counters = Counters::default();
 
         for block in entry.0.clone() {
-            if self.get(&block) {
-                hit_count += 1;
-            } else {
+            if !self.get(&block) {
                 self.insert(block);
-                insert_count += 1;
+                counters.inserted();
             }
-            read_count += 1;
+            counters.read();
         }
 
-        report.read_count += read_count;
-        report.hit_count += hit_count;
-        report.insert_count += insert_count;
+        counters.add_to_report(report);
+    }
+
+    fn get_or_insert_once(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+        let counters = Arc::new(RwLock::new(Counters::default()));
+
+        for block in entry.0.clone() {
+            self.get_or_insert_with(block, Arc::clone(&counters));
+            counters.write().read();
+        }
+
+        counters.read().add_to_report(report);
     }
 
     fn invalidate(&mut self, entry: &ArcTraceEntry) {
@@ -108,6 +123,10 @@ impl CacheSet<ArcTraceEntry> for SharedSegmentedMoka {
         self.0.get_or_insert(entry, report)
     }
 
+    fn get_or_insert_once(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+        self.0.get_or_insert_once(entry, report);
+    }
+
     fn invalidate(&mut self, entry: &ArcTraceEntry) {
         self.0.invalidate(entry);
     }
@@ -117,6 +136,6 @@ impl CacheSet<ArcTraceEntry> for SharedSegmentedMoka {
     }
 
     fn invalidate_entries_if(&mut self, entry: &ArcTraceEntry) {
-        self.0.invalidate_entries_if(entry);        
+        self.0.invalidate_entries_if(entry);
     }
 }

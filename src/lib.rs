@@ -21,6 +21,7 @@ pub const TRACE_FILE: &str = "./datasets/S3.lis";
 
 pub(crate) enum Op {
     GetOrInsert(String),
+    GetOrInsertOnce(String),
     Invalidate(String),
     InvalidateAll,
     InvalidateEntriesIf(String),
@@ -45,6 +46,8 @@ pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
             cache_set.get_or_insert(&entry, &mut report);
         } else if config.enable_invalidate && counter % 8 == 0 {
             cache_set.invalidate(&entry);
+        } else if config.enable_insert_once && counter % 3 == 0 {
+            cache_set.get_or_insert_once(&entry, &mut report);
         } else {
             cache_set.get_or_insert(&entry, &mut report);
         }
@@ -76,6 +79,8 @@ where
             ops.push(Op::InvalidateEntriesIf(line));
         } else if config.enable_invalidate && *counter % 8 == 0 {
             ops.push(Op::Invalidate(line));
+        } else if config.enable_insert_once && *counter % 3 == 0 {
+            ops.push(Op::GetOrInsertOnce(line));
         } else {
             ops.push(Op::GetOrInsert(line));
         }
@@ -95,6 +100,11 @@ fn process_commands(
                 Op::GetOrInsert(line) => {
                     if let Ok(entry) = parser.parse(&line) {
                         cache.get_or_insert(&entry, report);
+                    }
+                }
+                Op::GetOrInsertOnce(line) => {
+                    if let Ok(entry) = parser.parse(&line) {
+                        cache.get_or_insert_once(&entry, report);
                     }
                 }
                 Op::Invalidate(line) => {
@@ -125,6 +135,11 @@ async fn process_commands_async(
                 Op::GetOrInsert(line) => {
                     if let Ok(entry) = parser.parse(&line) {
                         cache.get_or_insert(&entry, report).await;
+                    }
+                }
+                Op::GetOrInsertOnce(line) => {
+                    if let Ok(entry) = parser.parse(&line) {
+                        cache.get_or_insert_once(&entry, report).await;
                     }
                 }
                 Op::Invalidate(line) => {

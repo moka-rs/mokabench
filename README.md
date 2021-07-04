@@ -23,21 +23,30 @@ Put `S3.lis` to the `./datasets` directory and run the benchmarks with the follo
 commands:
 
 ```console
+$ cargo build --release
+```
+
+```console
 ## Call `get` and `insert` with time-to-live = 3 seconds and
 ## time-to-idle = 1 second.
-$ cargo run --release -- --ttl 3 --tti 1
+$ ./target/release/mokabench --ttl 3 --tti 1
+
+## Also call `get_or_insert_with`.
+$ ./target/release/mokabench --ttl 3 --tti 1 --enable-insert-once
 
 ## Call `get`, `insert` and `invalidate`.
-$ cargo run --release -- --enable-invalidate
+$ ./target/release/mokabench --enable-invalidate
 
 ## Call `get`, `insert` and `invalidate_all`.
-$ cargo run --release -- --enable-invalidate-all
+$ ./target/release/mokabench --enable-invalidate-all
 
 ## Call `get`, `insert` and `invalidate_entries-if`.
-$ cargo run --release -- --enable-invalidate-entries-if
+$ ./target/release/mokabench --enable-invalidate-entries-if
 
 ## Run with everything.
-$ cargo run --release -- --ttl 3 --tti 1 --enable-invalidate --enable-invalidate-all --enable-invalidate-entries-if
+$ ./target/release/mokabench --ttl 3 --tti 1 \
+    --enable-insert-once --enable-invalidate \
+    --enable-invalidate-all --enable-invalidate-entries-if
 ```
 
 [arc-paper-site]: https://researcher.watson.ibm.com/researcher/view_person_subpage.php?id=4700

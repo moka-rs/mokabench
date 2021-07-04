@@ -31,6 +31,7 @@ fn create_config() -> anyhow::Result<Config> {
                 .help("Time-to-idle in seconds")
                 .takes_value(true),
         )
+        .arg(Arg::with_name("enable-insert-once").long("enable-insert-once"))
         .arg(Arg::with_name("enable-invalidate").long("enable-invalidate"))
         .arg(Arg::with_name("enable-invalidate-all").long("enable-invalidate-all"))
         .arg(Arg::with_name("enable-invalidate-entries-if").long("enable-invalidate-entries-if"))
@@ -52,6 +53,7 @@ fn create_config() -> anyhow::Result<Config> {
         ),
     };
 
+    let enable_insert_once = matches.is_present("enable-insert-once");
     let enable_invalidate = matches.is_present("enable-invalidate");
     let enable_invalidate_all = matches.is_present("enable-invalidate-all");
     let enable_invalidate_entries_if = matches.is_present("enable-invalidate-entries-if");
@@ -59,6 +61,7 @@ fn create_config() -> anyhow::Result<Config> {
     Ok(Config::new(
         ttl,
         tti,
+        enable_insert_once,
         enable_invalidate,
         enable_invalidate_all,
         enable_invalidate_entries_if,
