@@ -13,10 +13,12 @@ clap = "2.33"
 crossbeam-channel = "0.5"
 futures = "0.3"
 itertools = "0.10"
+parking_lot = "0.11"
+
 # moka = { version = "0.5", features = ["future"] }
 # moka = { version = "0.5", path = "../moka", features = ["future"] }
-moka = { git = "https://github.com/moka-rs/moka", branch = "get_or_insert_with", features = ["future"] }
-parking_lot = "0.11"
+moka = { git = "https://github.com/moka-rs/moka", branch = "master", features = ["future"] }
+# moka = { git = "https://github.com/moka-rs/moka", branch = "moka-cht", features = ["future"] }
 
 # actix-rt = "2"
 # actix-rt = "1"
