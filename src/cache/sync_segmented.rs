@@ -7,13 +7,13 @@ use crate::{
 
 use moka::sync::{CacheBuilder, SegmentedCache};
 use parking_lot::RwLock;
-use std::{collections::hash_map::RandomState, sync::Arc};
+use std::sync::Arc;
 
-use super::{Counters, InitClosureType};
+use super::{BuildFnvHasher, Counters, InitClosureType};
 
 pub struct SegmentedMoka {
     _config: Config,
-    cache: SegmentedCache<usize, Arc<[u8]>, RandomState>,
+    cache: SegmentedCache<usize, Arc<[u8]>, BuildFnvHasher>,
 }
 
 impl Clone for SegmentedMoka {
@@ -44,7 +44,7 @@ impl SegmentedMoka {
 
         Self {
             _config: config.clone(),
-            cache: builder.build(),
+            cache: builder.build_with_hasher(BuildFnvHasher::default()),
         }
     }
 

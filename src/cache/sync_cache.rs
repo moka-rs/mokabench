@@ -7,13 +7,13 @@ use crate::{
 
 use moka::sync::{Cache, CacheBuilder};
 use parking_lot::RwLock;
-use std::{collections::hash_map::RandomState, sync::Arc};
+use std::sync::Arc;
 
-use super::{CacheSet, Counters, InitClosureType};
+use super::{BuildFnvHasher, CacheSet, Counters, InitClosureType};
 
 pub struct SyncCache {
     _config: Config,
-    cache: Cache<usize, Arc<[u8]>, RandomState>,
+    cache: Cache<usize, Arc<[u8]>, BuildFnvHasher>,
 }
 
 impl Clone for SyncCache {
@@ -42,7 +42,7 @@ impl SyncCache {
 
         Self {
             _config: config.clone(),
-            cache: builder.build(),
+            cache: builder.build_with_hasher(BuildFnvHasher::default()),
         }
     }
 

@@ -7,6 +7,7 @@ use clap::{App, Arg};
 async fn main() -> anyhow::Result<()> {
     let config = create_config()?;
     println!("{:?}", config);
+    println!();
 
     println!("{}", Report::cvs_header());
 

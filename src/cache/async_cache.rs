@@ -1,14 +1,14 @@
-use super::{AsyncCacheSet, Counters, InitClosureError1, InitClosureType};
+use super::{AsyncCacheSet, BuildFnvHasher, Counters, InitClosureError1, InitClosureType};
 use crate::{cache::InitClosureError2, config::Config, parser::ArcTraceEntry, report::Report};
 
 use async_trait::async_trait;
 use moka::future::{Cache, CacheBuilder};
 use parking_lot::RwLock;
-use std::{collections::hash_map::RandomState, sync::Arc};
+use std::sync::Arc;
 
 pub struct AsyncCache {
     _config: Config,
-    cache: Cache<usize, Arc<[u8]>, RandomState>,
+    cache: Cache<usize, Arc<[u8]>, BuildFnvHasher>,
 }
 
 impl Clone for AsyncCache {
@@ -37,7 +37,7 @@ impl AsyncCache {
 
         Self {
             _config: config.clone(),
-            cache: builder.build(),
+            cache: builder.build_with_hasher(BuildFnvHasher::default()),
         }
     }
 

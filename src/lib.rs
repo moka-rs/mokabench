@@ -203,7 +203,7 @@ pub fn run_multi_threads(
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.
-    let mut report = Report::new("Moka Cache", capacity, Some(num_clients));
+    let mut report = Report::new("Moka Sync Cache", capacity, Some(num_clients));
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 

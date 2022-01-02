@@ -1,8 +1,9 @@
-use std::sync::Arc;
+use std::{sync::Arc, hash::BuildHasher};
 
 use crate::Report;
 
 use async_trait::async_trait;
+use fnv::FnvHasher;
 use thiserror::Error;
 
 pub(crate) mod async_cache;
@@ -55,6 +56,19 @@ pub(crate) fn make_value(key: usize) -> Arc<[u8]> {
     let mut value = vec![0; VALUE_LEN].into_boxed_slice();
     value[0] = (key % 256) as u8;
     value.into()
+}
+
+const HASH_SEED_KEY: u64 = 982922761776577566;
+
+#[derive(Clone, Default)]
+pub(crate) struct BuildFnvHasher;
+
+impl BuildHasher for BuildFnvHasher {
+    type Hasher = FnvHasher;
+
+    fn build_hasher(&self) -> Self::Hasher {
+        FnvHasher::with_key(HASH_SEED_KEY)
+    }
 }
 
 // https://rust-lang.github.io/rust-clippy/master/index.html#enum_variant_names

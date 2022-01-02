@@ -1,13 +1,13 @@
 use crate::{config::Config, parser::ArcTraceEntry, report::Report};
 
 use moka::unsync::{Cache, CacheBuilder};
-use std::{collections::hash_map::RandomState, sync::Arc};
+use std::sync::Arc;
 
-use super::{CacheSet, Counters};
+use super::{CacheSet, Counters, BuildFnvHasher};
 
 pub struct UnsyncCache {
     _config: Config,
-    cache: Cache<usize, Arc<[u8]>, RandomState>,
+    cache: Cache<usize, Arc<[u8]>, BuildFnvHasher>,
 }
 
 impl UnsyncCache {
@@ -23,7 +23,7 @@ impl UnsyncCache {
         }
         Self {
             _config: config.clone(),
-            cache: builder.build(),
+            cache: builder.build_with_hasher(BuildFnvHasher::default()),
         }
     }
 
