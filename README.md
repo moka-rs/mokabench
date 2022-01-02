@@ -51,3 +51,8 @@ $ ./target/release/mokabench --ttl 3 --tti 1 \
 
 [arc-paper-site]: https://researcher.watson.ibm.com/researcher/view_person_subpage.php?id=4700
 [rustup]: https://rustup.rs
+
+
+## License
+
+Mokabench is distributed under the MIT license. See [LICENSE-MIT](LICENSE-MIT) for details.

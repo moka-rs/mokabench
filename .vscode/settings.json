@@ -1,4 +1,7 @@
 {
+    "rust-analyzer.server.extraEnv": {
+        "CARGO_TARGET_DIR": "target/ra"
+    },
     "cSpell.words": [
         "Dharmendra",
         "Modha",
@@ -8,5 +11,8 @@
         "moka",
         "mokabench",
         "unsync"
-    ]
+    ],
+    "files.watcherExclude": {
+        "**/target": true
+    }
 }
