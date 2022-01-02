@@ -32,7 +32,7 @@ pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
     let reader = BufReader::new(f);
     let mut parser = parser::ArcTraceParser;
     let mut cache_set = UnsyncCache::new(config, capacity);
-    let mut report = Report::new("Moka Unsync Cache", capacity, None);
+    let mut report = Report::new("Moka Unsync Cache", capacity, Some(1));
     let mut counter = 0;
 
     let instant = Instant::now();
@@ -162,7 +162,7 @@ async fn process_commands_async(
 pub fn run_multi_threads(
     config: &Config,
     capacity: usize,
-    num_workers: u16,
+    num_clients: u16,
 ) -> anyhow::Result<Report> {
     let f = File::open(TRACE_FILE)?;
     let reader = BufReader::new(f);
@@ -172,7 +172,7 @@ pub fn run_multi_threads(
 
     let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
 
-    let handles = (0..num_workers)
+    let handles = (0..num_clients)
         .map(|_| {
             let mut cache = cache_set.clone();
             let ch = receive.clone();
@@ -203,7 +203,7 @@ pub fn run_multi_threads(
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.
-    let mut report = Report::new("Moka Cache", capacity, Some(num_workers));
+    let mut report = Report::new("Moka Cache", capacity, Some(num_clients));
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 
@@ -214,7 +214,7 @@ pub fn run_multi_threads(
 pub fn run_multi_thread_segmented(
     config: &Config,
     capacity: usize,
-    num_workers: u16,
+    num_clients: u16,
     num_segments: usize,
 ) -> anyhow::Result<Report> {
     let f = File::open(TRACE_FILE)?;
@@ -225,7 +225,7 @@ pub fn run_multi_thread_segmented(
 
     let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
 
-    let handles = (0..num_workers)
+    let handles = (0..num_clients)
         .map(|_| {
             let mut cache = cache_set.clone();
             let ch = receive.clone();
@@ -256,7 +256,7 @@ pub fn run_multi_thread_segmented(
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.
-    let mut report = Report::new("Moka SegmentedCache", capacity, Some(num_workers));
+    let mut report = Report::new("Moka SegmentedCache", capacity, Some(num_clients));
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 
@@ -266,7 +266,7 @@ pub fn run_multi_thread_segmented(
 pub async fn run_multi_tasks(
     config: &Config,
     capacity: usize,
-    num_workers: u16,
+    num_clients: u16,
 ) -> anyhow::Result<Report> {
     let f = File::open(TRACE_FILE)?;
     let reader = BufReader::new(f);
@@ -276,7 +276,7 @@ pub async fn run_multi_tasks(
 
     let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
 
-    let handles = (0..num_workers)
+    let handles = (0..num_clients)
         .map(|_| {
             let mut cache = cache_set.clone();
             let ch = receive.clone();
@@ -304,7 +304,7 @@ pub async fn run_multi_tasks(
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.
-    let mut report = Report::new("Moka Async Cache", capacity, Some(num_workers));
+    let mut report = Report::new("Moka Async Cache", capacity, Some(num_clients));
     report.duration = Some(elapsed);
     reports
         .iter()

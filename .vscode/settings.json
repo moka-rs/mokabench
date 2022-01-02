@@ -10,6 +10,7 @@
         "itertools",
         "moka",
         "mokabench",
+        "thiserror",
         "unsync"
     ],
     "files.watcherExclude": {

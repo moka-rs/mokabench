@@ -1,5 +1,5 @@
-use super::{AsyncCacheSet, Counters};
-use crate::{config::Config, parser::ArcTraceEntry, report::Report};
+use super::{AsyncCacheSet, Counters, InitClosureError1, InitClosureType};
+use crate::{cache::InitClosureError2, config::Config, parser::ArcTraceEntry, report::Report};
 
 use async_trait::async_trait;
 use moka::future::{Cache, CacheBuilder};
@@ -8,7 +8,7 @@ use std::{collections::hash_map::RandomState, sync::Arc};
 
 pub struct AsyncCache {
     _config: Config,
-    cache: Cache<usize, Arc<Box<[u8]>>, RandomState>,
+    cache: Cache<usize, Arc<[u8]>, RandomState>,
 }
 
 impl Clone for AsyncCache {
@@ -22,7 +22,9 @@ impl Clone for AsyncCache {
 
 impl AsyncCache {
     pub fn new(config: &Config, capacity: usize) -> Self {
-        let mut builder = CacheBuilder::new(capacity).initial_capacity(capacity);
+        #[allow(clippy::useless_conversion)]
+        let max_capacity = capacity.try_into().unwrap();
+        let mut builder = CacheBuilder::new(max_capacity).initial_capacity(capacity);
         if let Some(ttl) = config.ttl {
             builder = builder.time_to_live(ttl);
         }
@@ -46,16 +48,43 @@ impl AsyncCache {
     async fn insert(&self, key: usize) {
         let value = super::make_value(key);
         // tokio::task::sleep(std::time::Duration::from_micros(500));
-        self.cache.insert(key, Arc::new(value)).await;
+        self.cache.insert(key, value).await;
     }
 
     async fn get_or_insert_with(&self, key: usize, counters: Arc<RwLock<Counters>>) {
         self.cache
             .get_or_insert_with(key, async {
                 counters.write().inserted();
-                Arc::new(super::make_value(key))
+                super::make_value(key)
             })
             .await;
+    }
+
+    async fn get_or_try_insert_with(
+        &self,
+        ty: InitClosureType,
+        key: usize,
+        counters: Arc<RwLock<Counters>>,
+    ) {
+        match ty {
+            InitClosureType::GetOrTryInsertWithError1 => self
+                .cache
+                .get_or_try_insert_with(key, async {
+                    counters.write().inserted();
+                    Ok(super::make_value(key)) as Result<_, InitClosureError1>
+                })
+                .await
+                .is_ok(),
+            InitClosureType::GetOrTyyInsertWithError2 => self
+                .cache
+                .get_or_try_insert_with(key, async {
+                    counters.write().inserted();
+                    Ok(super::make_value(key)) as Result<_, InitClosureError2>
+                })
+                .await
+                .is_ok(),
+            _ => unreachable!(),
+        };
     }
 }
 
@@ -79,7 +108,13 @@ impl AsyncCacheSet<ArcTraceEntry> for AsyncCache {
         let counters = Arc::new(RwLock::new(Counters::default()));
 
         for block in entry.0.clone() {
-            self.get_or_insert_with(block, Arc::clone(&counters)).await;
+            {
+                let counters2 = Arc::clone(&counters);
+                match InitClosureType::select(block) {
+                    InitClosureType::GetOrInsert => self.get_or_insert_with(block, counters2).await,
+                    ty => self.get_or_try_insert_with(ty, block, counters2).await,
+                }
+            }
             counters.write().read();
         }
 

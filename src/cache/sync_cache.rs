@@ -1,14 +1,19 @@
-use crate::{config::Config, parser::ArcTraceEntry, report::Report};
+use crate::{
+    cache::{InitClosureError1, InitClosureError2},
+    config::Config,
+    parser::ArcTraceEntry,
+    report::Report,
+};
 
 use moka::sync::{Cache, CacheBuilder};
 use parking_lot::RwLock;
 use std::{collections::hash_map::RandomState, sync::Arc};
 
-use super::{CacheSet, Counters};
+use super::{CacheSet, Counters, InitClosureType};
 
 pub struct SyncCache {
     _config: Config,
-    cache: Cache<usize, Arc<Box<[u8]>>, RandomState>,
+    cache: Cache<usize, Arc<[u8]>, RandomState>,
 }
 
 impl Clone for SyncCache {
@@ -22,7 +27,9 @@ impl Clone for SyncCache {
 
 impl SyncCache {
     pub fn new(config: &Config, capacity: usize) -> Self {
-        let mut builder = CacheBuilder::new(capacity).initial_capacity(capacity);
+        #[allow(clippy::useless_conversion)]
+        let max_capacity = capacity.try_into().unwrap();
+        let mut builder = CacheBuilder::new(max_capacity).initial_capacity(capacity);
         if let Some(ttl) = config.ttl {
             builder = builder.time_to_live(ttl);
         }
@@ -42,8 +49,33 @@ impl SyncCache {
     fn get_or_insert_with(&self, key: usize, counters: Arc<RwLock<Counters>>) {
         self.cache.get_or_insert_with(key, || {
             counters.write().inserted();
-            Arc::new(super::make_value(key))
+            super::make_value(key)
         });
+    }
+
+    fn get_or_try_insert_with(
+        &self,
+        ty: InitClosureType,
+        key: usize,
+        counters: Arc<RwLock<Counters>>,
+    ) {
+        match ty {
+            InitClosureType::GetOrTryInsertWithError1 => self
+                .cache
+                .get_or_try_insert_with(key, || {
+                    counters.write().inserted();
+                    Ok(super::make_value(key)) as Result<_, InitClosureError1>
+                })
+                .is_ok(),
+            InitClosureType::GetOrTyyInsertWithError2 => self
+                .cache
+                .get_or_try_insert_with(key, || {
+                    counters.write().inserted();
+                    Ok(super::make_value(key)) as Result<_, InitClosureError2>
+                })
+                .is_ok(),
+            _ => unreachable!(),
+        };
     }
 
     fn get(&self, key: &usize) -> bool {
@@ -53,7 +85,7 @@ impl SyncCache {
     fn insert(&self, key: usize) {
         let value = super::make_value(key);
         // std::thread::sleep(std::time::Duration::from_micros(500));
-        self.cache.insert(key, Arc::new(value));
+        self.cache.insert(key, value);
     }
 }
 
@@ -76,7 +108,13 @@ impl CacheSet<ArcTraceEntry> for SyncCache {
         let counters = Arc::new(RwLock::new(Counters::default()));
 
         for block in entry.0.clone() {
-            self.get_or_insert_with(block, Arc::clone(&counters));
+            {
+                let counters2 = Arc::clone(&counters);
+                match InitClosureType::select(block) {
+                    InitClosureType::GetOrInsert => self.get_or_insert_with(block, counters2),
+                    ty => self.get_or_try_insert_with(ty, block, counters2),
+                }
+            }
             counters.write().read();
         }
 

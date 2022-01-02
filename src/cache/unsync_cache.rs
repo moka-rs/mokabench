@@ -7,12 +7,14 @@ use super::{CacheSet, Counters};
 
 pub struct UnsyncCache {
     _config: Config,
-    cache: Cache<usize, Arc<Box<[u8]>>, RandomState>,
+    cache: Cache<usize, Arc<[u8]>, RandomState>,
 }
 
 impl UnsyncCache {
     pub fn new(config: &Config, capacity: usize) -> Self {
-        let mut builder = CacheBuilder::new(capacity).initial_capacity(capacity);
+        #[allow(clippy::useless_conversion)]
+        let max_capacity = capacity.try_into().unwrap();
+        let mut builder = CacheBuilder::new(max_capacity).initial_capacity(capacity);
         if let Some(ttl) = config.ttl {
             builder = builder.time_to_live(ttl);
         }
@@ -32,7 +34,7 @@ impl UnsyncCache {
     fn insert(&mut self, key: usize) {
         let value = super::make_value(key);
         // std::thread::sleep(std::time::Duration::from_micros(500));
-        self.cache.insert(key, Arc::new(value));
+        self.cache.insert(key, value);
     }
 
     fn invalidate_entries_if(&mut self, entry: &ArcTraceEntry) {

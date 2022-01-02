@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
 use crate::Report;
 
 use async_trait::async_trait;
+use thiserror::Error;
 
 pub(crate) mod async_cache;
 pub(crate) mod sync_cache;
@@ -33,7 +36,6 @@ pub(crate) struct Counters {
 impl Counters {
     pub(crate) fn inserted(&mut self) {
         self.insert_count += 1;
-        self.read_count += 1;
     }
 
     pub(crate) fn read(&mut self) {
@@ -49,8 +51,35 @@ impl Counters {
 
 const VALUE_LEN: usize = 256;
 
-pub(crate) fn make_value(key: usize) -> Box<[u8]> {
+pub(crate) fn make_value(key: usize) -> Arc<[u8]> {
     let mut value = vec![0; VALUE_LEN].into_boxed_slice();
     value[0] = (key % 256) as u8;
-    value
+    value.into()
 }
+
+// https://rust-lang.github.io/rust-clippy/master/index.html#enum_variant_names
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum InitClosureType {
+    GetOrInsert,
+    GetOrTryInsertWithError1,
+    GetOrTyyInsertWithError2,
+}
+
+impl InitClosureType {
+    pub(crate) fn select(block: usize) -> Self {
+        match block % 4 {
+            0 => Self::GetOrTryInsertWithError1,
+            1 => Self::GetOrTyyInsertWithError2,
+            _ => Self::GetOrInsert,
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("init closure failed with error one")]
+pub(crate) struct InitClosureError1;
+
+#[derive(Debug, Error)]
+#[error("init closure failed with error two")]
+pub(crate) struct InitClosureError2;
