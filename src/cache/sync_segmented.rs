@@ -6,7 +6,7 @@ use crate::{
     report::Report,
 };
 
-use moka::sync::{CacheBuilder, SegmentedCache};
+use moka::sync::SegmentedCache;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -14,7 +14,7 @@ use std::sync::{
 
 pub struct SegmentedMoka {
     config: Config,
-    cache: SegmentedCache<usize, Arc<[u8]>, BuildFnvHasher>,
+    cache: SegmentedCache<usize, (u32, Arc<[u8]>), BuildFnvHasher>,
 }
 
 impl Clone for SegmentedMoka {
@@ -27,12 +27,10 @@ impl Clone for SegmentedMoka {
 }
 
 impl SegmentedMoka {
-    pub fn new(config: &Config, capacity: usize, num_segments: usize) -> Self {
-        #[allow(clippy::useless_conversion)]
-        let max_capacity = capacity.try_into().unwrap();
-        let mut builder = CacheBuilder::new(max_capacity)
-            .initial_capacity(capacity)
-            .segments(num_segments);
+    pub fn new(config: &Config, max_cap: u64, init_cap: usize, num_segments: usize) -> Self {
+        let mut builder = SegmentedCache::builder(num_segments)
+            .max_capacity(max_cap)
+            .initial_capacity(init_cap);
         if let Some(ttl) = config.ttl {
             builder = builder.time_to_live(ttl);
         }
@@ -41,6 +39,9 @@ impl SegmentedMoka {
         }
         if config.invalidate_entries_if {
             builder = builder.support_invalidation_closures();
+        }
+        if config.size_aware {
+            builder = builder.weigher(|_k, (s, _v)| *s);
         }
 
         Self {
@@ -53,17 +54,17 @@ impl SegmentedMoka {
         self.cache.get(key).is_some()
     }
 
-    fn insert(&self, key: usize) {
-        let value = super::make_value(key);
+    fn insert(&self, key: usize, req_id: usize) {
+        let value = super::make_value(&self.config, key, req_id);
         super::sleep_thread_for_insertion(&self.config);
         self.cache.insert(key, value);
     }
 
-    fn get_or_insert_with(&self, key: usize, is_inserted: Arc<AtomicBool>) {
+    fn get_or_insert_with(&self, key: usize, req_id: usize, is_inserted: Arc<AtomicBool>) {
         self.cache.get_or_insert_with(key, || {
             super::sleep_thread_for_insertion(&self.config);
             is_inserted.store(true, Ordering::Release);
-            super::make_value(key)
+            super::make_value(&self.config, key, req_id)
         });
     }
 
@@ -71,6 +72,7 @@ impl SegmentedMoka {
         &self,
         ty: InitClosureType,
         key: usize,
+        req_id: usize,
         is_inserted: Arc<AtomicBool>,
     ) {
         match ty {
@@ -79,7 +81,7 @@ impl SegmentedMoka {
                 .get_or_try_insert_with(key, || {
                     super::sleep_thread_for_insertion(&self.config);
                     is_inserted.store(true, Ordering::Release);
-                    Ok(super::make_value(key)) as Result<_, InitClosureError1>
+                    Ok(super::make_value(&self.config, key, req_id)) as Result<_, InitClosureError1>
                 })
                 .is_ok(),
             InitClosureType::GetOrTyyInsertWithError2 => self
@@ -87,7 +89,7 @@ impl SegmentedMoka {
                 .get_or_try_insert_with(key, || {
                     super::sleep_thread_for_insertion(&self.config);
                     is_inserted.store(true, Ordering::Release);
-                    Ok(super::make_value(key)) as Result<_, InitClosureError2>
+                    Ok(super::make_value(&self.config, key, req_id)) as Result<_, InitClosureError2>
                 })
                 .is_ok(),
             _ => unreachable!(),
@@ -98,15 +100,17 @@ impl SegmentedMoka {
 impl CacheSet<ArcTraceEntry> for SegmentedMoka {
     fn get_or_insert(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
+        let mut req_id = entry.line_number();
 
-        for block in entry.0.clone() {
+        for block in entry.range() {
             if self.get(&block) {
                 counters.read_hit();
             } else {
-                self.insert(block);
+                self.insert(block, req_id);
                 counters.inserted();
                 counters.read_missed();
             }
+            req_id += 1;
         }
 
         counters.add_to_report(report);
@@ -114,14 +118,17 @@ impl CacheSet<ArcTraceEntry> for SegmentedMoka {
 
     fn get_or_insert_once(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
+        let mut req_id = entry.line_number();
         let is_inserted = Arc::new(AtomicBool::default());
 
-        for block in entry.0.clone() {
+        for block in entry.range() {
             {
                 let is_inserted2 = Arc::clone(&is_inserted);
                 match InitClosureType::select(block) {
-                    InitClosureType::GetOrInsert => self.get_or_insert_with(block, is_inserted2),
-                    ty => self.get_or_try_insert_with(ty, block, is_inserted2),
+                    InitClosureType::GetOrInsert => {
+                        self.get_or_insert_with(block, req_id, is_inserted2)
+                    }
+                    ty => self.get_or_try_insert_with(ty, block, req_id, is_inserted2),
                 }
             }
 
@@ -132,13 +139,27 @@ impl CacheSet<ArcTraceEntry> for SegmentedMoka {
             } else {
                 counters.read_hit();
             }
+            req_id += 1;
+        }
+
+        counters.add_to_report(report);
+    }
+
+    fn update(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+        let mut counters = Counters::default();
+        let mut req_id = entry.line_number();
+
+        for block in entry.range() {
+            self.insert(block, req_id);
+            counters.inserted();
+            req_id += 1;
         }
 
         counters.add_to_report(report);
     }
 
     fn invalidate(&mut self, entry: &ArcTraceEntry) {
-        for block in entry.0.clone() {
+        for block in entry.range() {
             self.cache.invalidate(&block);
         }
     }
@@ -148,9 +169,9 @@ impl CacheSet<ArcTraceEntry> for SegmentedMoka {
     }
 
     fn invalidate_entries_if(&mut self, entry: &ArcTraceEntry) {
-        for block in entry.0.clone() {
+        for block in entry.range() {
             self.cache
-                .invalidate_entries_if(move |_k, v| v[0] == (block % 256) as u8)
+                .invalidate_entries_if(move |_k, (_s, v)| v[0] == (block % 256) as u8)
                 .expect("invalidate_entries_if failed");
         }
     }
@@ -159,8 +180,8 @@ impl CacheSet<ArcTraceEntry> for SegmentedMoka {
 pub struct SharedSegmentedMoka(SegmentedMoka);
 
 impl SharedSegmentedMoka {
-    pub fn new(config: &Config, capacity: usize, num_segments: usize) -> Self {
-        Self(SegmentedMoka::new(config, capacity, num_segments))
+    pub fn new(config: &Config, max_cap: u64, init_cap: usize, num_segments: usize) -> Self {
+        Self(SegmentedMoka::new(config, max_cap, init_cap, num_segments))
     }
 }
 
@@ -177,6 +198,10 @@ impl CacheSet<ArcTraceEntry> for SharedSegmentedMoka {
 
     fn get_or_insert_once(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
         self.0.get_or_insert_once(entry, report);
+    }
+
+    fn update(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+        self.0.update(entry, report);
     }
 
     fn invalidate(&mut self, entry: &ArcTraceEntry) {

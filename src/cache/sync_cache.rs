@@ -6,7 +6,7 @@ use crate::{
     report::Report,
 };
 
-use moka::sync::{Cache, CacheBuilder};
+use moka::sync::Cache;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -14,7 +14,7 @@ use std::sync::{
 
 pub struct SyncCache {
     config: Config,
-    cache: Cache<usize, Arc<[u8]>, BuildFnvHasher>,
+    cache: Cache<usize, (u32, Arc<[u8]>), BuildFnvHasher>,
 }
 
 impl Clone for SyncCache {
@@ -27,10 +27,10 @@ impl Clone for SyncCache {
 }
 
 impl SyncCache {
-    pub fn new(config: &Config, capacity: usize) -> Self {
-        #[allow(clippy::useless_conversion)]
-        let max_capacity = capacity.try_into().unwrap();
-        let mut builder = CacheBuilder::new(max_capacity).initial_capacity(capacity);
+    pub fn new(config: &Config, max_cap: u64, init_cap: usize) -> Self {
+        let mut builder = Cache::builder()
+            .max_capacity(max_cap)
+            .initial_capacity(init_cap);
         if let Some(ttl) = config.ttl {
             builder = builder.time_to_live(ttl);
         }
@@ -39,6 +39,9 @@ impl SyncCache {
         }
         if config.invalidate_entries_if {
             builder = builder.support_invalidation_closures();
+        }
+        if config.size_aware {
+            builder = builder.weigher(|_k, (s, _v)| *s);
         }
 
         Self {
@@ -51,17 +54,17 @@ impl SyncCache {
         self.cache.get(key).is_some()
     }
 
-    fn insert(&self, key: usize) {
-        let value = super::make_value(key);
+    fn insert(&self, key: usize, req_id: usize) {
+        let value = super::make_value(&self.config, key, req_id);
         super::sleep_thread_for_insertion(&self.config);
         self.cache.insert(key, value);
     }
 
-    fn get_or_insert_with(&self, key: usize, is_inserted: Arc<AtomicBool>) {
+    fn get_or_insert_with(&self, key: usize, req_id: usize, is_inserted: Arc<AtomicBool>) {
         self.cache.get_or_insert_with(key, || {
             super::sleep_thread_for_insertion(&self.config);
             is_inserted.store(true, Ordering::Release);
-            super::make_value(key)
+            super::make_value(&self.config, key, req_id)
         });
     }
 
@@ -69,6 +72,7 @@ impl SyncCache {
         &self,
         ty: InitClosureType,
         key: usize,
+        req_id: usize,
         is_inserted: Arc<AtomicBool>,
     ) {
         match ty {
@@ -77,7 +81,7 @@ impl SyncCache {
                 .get_or_try_insert_with(key, || {
                     super::sleep_thread_for_insertion(&self.config);
                     is_inserted.store(true, Ordering::Release);
-                    Ok(super::make_value(key)) as Result<_, InitClosureError1>
+                    Ok(super::make_value(&self.config, key, req_id)) as Result<_, InitClosureError1>
                 })
                 .is_ok(),
             InitClosureType::GetOrTyyInsertWithError2 => self
@@ -85,7 +89,7 @@ impl SyncCache {
                 .get_or_try_insert_with(key, || {
                     super::sleep_thread_for_insertion(&self.config);
                     is_inserted.store(true, Ordering::Release);
-                    Ok(super::make_value(key)) as Result<_, InitClosureError2>
+                    Ok(super::make_value(&self.config, key, req_id)) as Result<_, InitClosureError2>
                 })
                 .is_ok(),
             _ => unreachable!(),
@@ -96,15 +100,17 @@ impl SyncCache {
 impl CacheSet<ArcTraceEntry> for SyncCache {
     fn get_or_insert(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
+        let mut req_id = entry.line_number();
 
-        for block in entry.0.clone() {
+        for block in entry.range() {
             if self.get(&block) {
                 counters.read_hit();
             } else {
-                self.insert(block);
+                self.insert(block, req_id);
                 counters.inserted();
                 counters.read_missed();
             }
+            req_id += 1;
         }
 
         counters.add_to_report(report);
@@ -112,14 +118,17 @@ impl CacheSet<ArcTraceEntry> for SyncCache {
 
     fn get_or_insert_once(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
+        let mut req_id = entry.line_number();
         let is_inserted = Arc::new(AtomicBool::default());
 
-        for block in entry.0.clone() {
+        for block in entry.range() {
             {
                 let is_inserted2 = Arc::clone(&is_inserted);
                 match InitClosureType::select(block) {
-                    InitClosureType::GetOrInsert => self.get_or_insert_with(block, is_inserted2),
-                    ty => self.get_or_try_insert_with(ty, block, is_inserted2),
+                    InitClosureType::GetOrInsert => {
+                        self.get_or_insert_with(block, req_id, is_inserted2)
+                    }
+                    ty => self.get_or_try_insert_with(ty, block, req_id, is_inserted2),
                 }
             }
 
@@ -130,13 +139,27 @@ impl CacheSet<ArcTraceEntry> for SyncCache {
             } else {
                 counters.read_hit();
             }
+            req_id += 1;
+        }
+
+        counters.add_to_report(report);
+    }
+
+    fn update(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+        let mut counters = Counters::default();
+        let mut req_id = entry.line_number();
+
+        for block in entry.range() {
+            self.insert(block, req_id);
+            counters.inserted();
+            req_id += 1;
         }
 
         counters.add_to_report(report);
     }
 
     fn invalidate(&mut self, entry: &ArcTraceEntry) {
-        for block in entry.0.clone() {
+        for block in entry.range() {
             self.cache.invalidate(&block);
         }
     }
@@ -146,9 +169,9 @@ impl CacheSet<ArcTraceEntry> for SyncCache {
     }
 
     fn invalidate_entries_if(&mut self, entry: &ArcTraceEntry) {
-        for block in entry.0.clone() {
+        for block in entry.range() {
             self.cache
-                .invalidate_entries_if(move |_k, v| v[0] == (block % 256) as u8)
+                .invalidate_entries_if(move |_k, (_s, v)| v[0] == (block % 256) as u8)
                 .expect("invalidate_entries_if failed");
         }
     }
@@ -157,8 +180,8 @@ impl CacheSet<ArcTraceEntry> for SyncCache {
 pub struct SharedSyncCache(SyncCache);
 
 impl SharedSyncCache {
-    pub fn new(config: &Config, capacity: usize) -> Self {
-        Self(SyncCache::new(config, capacity))
+    pub fn new(config: &Config, max_cap: u64, init_cap: usize) -> Self {
+        Self(SyncCache::new(config, max_cap, init_cap))
     }
 }
 
@@ -175,6 +198,10 @@ impl CacheSet<ArcTraceEntry> for SharedSyncCache {
 
     fn get_or_insert_once(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
         self.0.get_or_insert_once(entry, report);
+    }
+
+    fn update(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+        self.0.update(entry, report);
     }
 
     fn invalidate(&mut self, entry: &ArcTraceEntry) {

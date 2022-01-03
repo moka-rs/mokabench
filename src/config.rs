@@ -10,6 +10,7 @@ pub struct Config {
     pub invalidate: bool,
     pub invalidate_all: bool,
     pub invalidate_entries_if: bool,
+    pub size_aware: bool,
 }
 
 // https://rust-lang.github.io/rust-clippy/master/index.html#too_many_arguments
@@ -24,6 +25,7 @@ impl Config {
         invalidate: bool,
         invalidate_all: bool,
         invalidate_entries_if: bool,
+        size_aware: bool,
     ) -> Self {
         Self {
             ttl: ttl_secs.map(Duration::from_secs),
@@ -34,6 +36,7 @@ impl Config {
             invalidate,
             invalidate_all,
             invalidate_entries_if,
+            size_aware,
         }
     }
 }

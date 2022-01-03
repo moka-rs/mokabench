@@ -11,7 +11,7 @@ async fn main() -> anyhow::Result<()> {
 
     println!("{}", Report::cvs_header());
 
-    const CAPACITIES: &[usize] = &[100_000, 500_000, 1_000_000];
+    const CAPACITIES: &[usize] = &[100_000, 400_000, 800_000];
     // const CAPACITIES: &[usize] = &[100_000, 2_000_000];
     // const CAPACITIES: &[usize] = &[100_000];
 
@@ -64,6 +64,7 @@ const OPTION_INSERTION_DELAY: &str = "insertion-delay";
 const OPTION_INVALIDATE: &str = "invalidate";
 const OPTION_INVALIDATE_ALL: &str = "invalidate-all";
 const OPTION_INVALIDATE_IF: &str = "invalidate-entries-if";
+const OPTION_SIZE_AWARE: &str = "size-aware";
 
 fn create_config() -> anyhow::Result<Config> {
     let matches = App::new("Moka Bench")
@@ -97,6 +98,7 @@ fn create_config() -> anyhow::Result<Config> {
         .arg(Arg::new(OPTION_INVALIDATE).long(OPTION_INVALIDATE))
         .arg(Arg::new(OPTION_INVALIDATE_ALL).long(OPTION_INVALIDATE_ALL))
         .arg(Arg::new(OPTION_INVALIDATE_IF).long(OPTION_INVALIDATE_IF))
+        .arg(Arg::new(OPTION_SIZE_AWARE).long(OPTION_SIZE_AWARE))
         .get_matches();
 
     let ttl_secs = match matches.value_of(OPTION_TTL) {
@@ -136,6 +138,7 @@ fn create_config() -> anyhow::Result<Config> {
     let invalidate = matches.is_present(OPTION_INVALIDATE);
     let invalidate_all = matches.is_present(OPTION_INVALIDATE_ALL);
     let invalidate_entries_if = matches.is_present(OPTION_INVALIDATE_IF);
+    let size_aware = matches.is_present(OPTION_SIZE_AWARE);
 
     Ok(Config::new(
         ttl_secs,
@@ -146,5 +149,6 @@ fn create_config() -> anyhow::Result<Config> {
         invalidate,
         invalidate_all,
         invalidate_entries_if,
+        size_aware,
     ))
 }

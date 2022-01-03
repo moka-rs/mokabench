@@ -3,7 +3,7 @@ use std::time::Duration;
 #[derive(Clone)]
 pub struct Report {
     pub name: String,
-    pub capacity: usize,
+    pub capacity: u64,
     pub num_workers: Option<u16>,
     pub insert_count: usize,
     pub read_count: usize,
@@ -12,7 +12,7 @@ pub struct Report {
 }
 
 impl Report {
-    pub fn new(name: &str, capacity: usize, num_workers: Option<u16>) -> Self {
+    pub fn new(name: &str, capacity: u64, num_workers: Option<u16>) -> Self {
         Self {
             name: name.to_string(),
             capacity,

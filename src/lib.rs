@@ -20,19 +20,24 @@ pub use report::Report;
 pub const TRACE_FILE: &str = "./datasets/S3.lis";
 
 pub(crate) enum Op {
-    GetOrInsert(String),
-    GetOrInsertOnce(String),
-    Invalidate(String),
+    GetOrInsert(String, usize),
+    GetOrInsertOnce(String, usize),
+    Update(String, usize),
+    Invalidate(String, usize),
     InvalidateAll,
-    InvalidateEntriesIf(String),
+    InvalidateEntriesIf(String, usize),
 }
 
 pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
     let f = File::open(TRACE_FILE)?;
     let reader = BufReader::new(f);
     let mut parser = parser::ArcTraceParser;
-    let mut cache_set = UnsyncCache::new(config, capacity);
-    let mut report = Report::new("Moka Unsync Cache", capacity, Some(1));
+    let mut max_cap = capacity.try_into().unwrap();
+    if config.size_aware {
+        max_cap *= 2u64.pow(15);
+    }
+    let mut cache_set = UnsyncCache::new(config, max_cap, capacity);
+    let mut report = Report::new("Moka Unsync Cache", max_cap, Some(1));
     let mut counter = 0;
 
     let instant = Instant::now();
@@ -40,10 +45,12 @@ pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
     for line in reader.lines() {
         let line = line?;
         counter += 1;
-        let entry = parser.parse(&line)?;
+        let entry = parser.parse(&line, counter)?;
         if config.invalidate_all && counter % 100_000 == 0 {
             cache_set.invalidate_all();
             cache_set.get_or_insert(&entry, &mut report);
+        } else if config.size_aware && counter % 11 == 0 {
+            cache_set.update(&entry, &mut report);
         } else if config.invalidate && counter % 8 == 0 {
             cache_set.invalidate(&entry);
         } else if config.insert_once && counter % 3 == 0 {
@@ -74,15 +81,17 @@ where
         *counter += 1;
         if config.invalidate_all && *counter % 100_000 == 0 {
             ops.push(Op::InvalidateAll);
-            ops.push(Op::GetOrInsert(line));
+            ops.push(Op::GetOrInsert(line, *counter));
         } else if config.invalidate_entries_if && *counter % 5_000 == 0 {
-            ops.push(Op::InvalidateEntriesIf(line));
+            ops.push(Op::InvalidateEntriesIf(line, *counter));
+        } else if config.size_aware && *counter % 11 == 0 {
+            ops.push(Op::Update(line, *counter));
         } else if config.invalidate && *counter % 8 == 0 {
-            ops.push(Op::Invalidate(line));
+            ops.push(Op::Invalidate(line, *counter));
         } else if config.insert_once && *counter % 3 == 0 {
-            ops.push(Op::GetOrInsertOnce(line));
+            ops.push(Op::GetOrInsertOnce(line, *counter));
         } else {
-            ops.push(Op::GetOrInsert(line));
+            ops.push(Op::GetOrInsert(line, *counter));
         }
     }
     Ok(ops)
@@ -97,24 +106,29 @@ fn process_commands(
     while let Ok(ops) = receiver.recv() {
         for op in ops {
             match op {
-                Op::GetOrInsert(line) => {
-                    if let Ok(entry) = parser.parse(&line) {
+                Op::GetOrInsert(line, line_number) => {
+                    if let Ok(entry) = parser.parse(&line, line_number) {
                         cache.get_or_insert(&entry, report);
                     }
                 }
-                Op::GetOrInsertOnce(line) => {
-                    if let Ok(entry) = parser.parse(&line) {
+                Op::GetOrInsertOnce(line, line_number) => {
+                    if let Ok(entry) = parser.parse(&line, line_number) {
                         cache.get_or_insert_once(&entry, report);
                     }
                 }
-                Op::Invalidate(line) => {
-                    if let Ok(entry) = parser.parse(&line) {
+                Op::Update(line, line_number) => {
+                    if let Ok(entry) = parser.parse(&line, line_number) {
+                        cache.update(&entry, report);
+                    }
+                }
+                Op::Invalidate(line, line_number) => {
+                    if let Ok(entry) = parser.parse(&line, line_number) {
                         cache.invalidate(&entry);
                     }
                 }
                 Op::InvalidateAll => cache.invalidate_all(),
-                Op::InvalidateEntriesIf(line) => {
-                    if let Ok(entry) = parser.parse(&line) {
+                Op::InvalidateEntriesIf(line, line_number) => {
+                    if let Ok(entry) = parser.parse(&line, line_number) {
                         cache.invalidate_entries_if(&entry);
                     }
                 }
@@ -132,24 +146,29 @@ async fn process_commands_async(
     while let Ok(ops) = receiver.recv() {
         for op in ops {
             match op {
-                Op::GetOrInsert(line) => {
-                    if let Ok(entry) = parser.parse(&line) {
+                Op::GetOrInsert(line, line_number) => {
+                    if let Ok(entry) = parser.parse(&line, line_number) {
                         cache.get_or_insert(&entry, report).await;
                     }
                 }
-                Op::GetOrInsertOnce(line) => {
-                    if let Ok(entry) = parser.parse(&line) {
+                Op::GetOrInsertOnce(line, line_number) => {
+                    if let Ok(entry) = parser.parse(&line, line_number) {
                         cache.get_or_insert_once(&entry, report).await;
                     }
                 }
-                Op::Invalidate(line) => {
-                    if let Ok(entry) = parser.parse(&line) {
+                Op::Update(line, line_number) => {
+                    if let Ok(entry) = parser.parse(&line, line_number) {
+                        cache.update(&entry, report).await;
+                    }
+                }
+                Op::Invalidate(line, line_number) => {
+                    if let Ok(entry) = parser.parse(&line, line_number) {
                         cache.invalidate(&entry).await;
                     }
                 }
                 Op::InvalidateAll => cache.invalidate_all(),
-                Op::InvalidateEntriesIf(line) => {
-                    if let Ok(entry) = parser.parse(&line) {
+                Op::InvalidateEntriesIf(line, line_number) => {
+                    if let Ok(entry) = parser.parse(&line, line_number) {
                         cache.invalidate_entries_if(&entry);
                     }
                 }
@@ -166,7 +185,11 @@ pub fn run_multi_threads(
 ) -> anyhow::Result<Report> {
     let f = File::open(TRACE_FILE)?;
     let reader = BufReader::new(f);
-    let cache_set = SharedSyncCache::new(config, capacity);
+    let mut max_cap = capacity.try_into().unwrap();
+    if config.size_aware {
+        max_cap *= 2u64.pow(15);
+    }
+    let cache_set = SharedSyncCache::new(config, max_cap, capacity);
 
     const BATCH_SIZE: usize = 200;
 
@@ -178,7 +201,7 @@ pub fn run_multi_threads(
             let ch = receive.clone();
 
             std::thread::spawn(move || {
-                let mut report = Report::new("Moka Cache", capacity, None);
+                let mut report = Report::new("Moka Cache", max_cap, None);
                 process_commands(ch, &mut cache, &mut report);
                 report
             })
@@ -203,7 +226,7 @@ pub fn run_multi_threads(
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.
-    let mut report = Report::new("Moka Sync Cache", capacity, Some(num_clients));
+    let mut report = Report::new("Moka Sync Cache", max_cap, Some(num_clients));
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 
@@ -219,7 +242,11 @@ pub fn run_multi_thread_segmented(
 ) -> anyhow::Result<Report> {
     let f = File::open(TRACE_FILE)?;
     let reader = BufReader::new(f);
-    let cache_set = SharedSegmentedMoka::new(config, capacity, num_segments);
+    let mut max_cap = capacity.try_into().unwrap();
+    if config.size_aware {
+        max_cap *= 2u64.pow(15);
+    }
+    let cache_set = SharedSegmentedMoka::new(config, max_cap, capacity, num_segments);
 
     const BATCH_SIZE: usize = 200;
 
@@ -231,7 +258,7 @@ pub fn run_multi_thread_segmented(
             let ch = receive.clone();
 
             std::thread::spawn(move || {
-                let mut report = Report::new("Moka SegmentedCache", capacity, None);
+                let mut report = Report::new("Moka SegmentedCache", max_cap, None);
                 process_commands(ch, &mut cache, &mut report);
                 report
             })
@@ -256,7 +283,7 @@ pub fn run_multi_thread_segmented(
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.
-    let mut report = Report::new("Moka SegmentedCache", capacity, Some(num_clients));
+    let mut report = Report::new("Moka SegmentedCache", max_cap, Some(num_clients));
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 
@@ -270,7 +297,11 @@ pub async fn run_multi_tasks(
 ) -> anyhow::Result<Report> {
     let f = File::open(TRACE_FILE)?;
     let reader = BufReader::new(f);
-    let cache_set = SharedAsyncCache::new(config, capacity);
+    let mut max_cap = capacity.try_into().unwrap();
+    if config.size_aware {
+        max_cap *= 2u64.pow(15);
+    }
+    let cache_set = SharedAsyncCache::new(config, max_cap, capacity);
 
     const BATCH_SIZE: usize = 200;
 
@@ -282,7 +313,7 @@ pub async fn run_multi_tasks(
             let ch = receive.clone();
 
             tokio::task::spawn(async move {
-                let mut report = Report::new("Moka Async Cache", capacity, None);
+                let mut report = Report::new("Moka Async Cache", max_cap, None);
                 process_commands_async(ch, &mut cache, &mut report).await;
                 report
             })
@@ -304,7 +335,7 @@ pub async fn run_multi_tasks(
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.
-    let mut report = Report::new("Moka Async Cache", capacity, Some(num_clients));
+    let mut report = Report::new("Moka Async Cache", max_cap, Some(num_clients));
     report.duration = Some(elapsed);
     reports
         .iter()

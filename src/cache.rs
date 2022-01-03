@@ -1,9 +1,12 @@
-use std::{hash::BuildHasher, sync::Arc};
+use std::{
+    hash::{BuildHasher, Hash, Hasher},
+    sync::Arc,
+};
 
 use crate::{config::Config, Report};
 
 use async_trait::async_trait;
-use fnv::FnvHasher;
+use fnv::{FnvBuildHasher, FnvHasher};
 use thiserror::Error;
 
 pub(crate) mod async_cache;
@@ -14,6 +17,7 @@ pub(crate) mod unsync_cache;
 pub trait CacheSet<T> {
     fn get_or_insert(&mut self, entry: &T, report: &mut Report);
     fn get_or_insert_once(&mut self, entry: &T, report: &mut Report);
+    fn update(&mut self, entry: &T, report: &mut Report);
     fn invalidate(&mut self, entry: &T);
     fn invalidate_all(&mut self);
     fn invalidate_entries_if(&mut self, entry: &T);
@@ -23,6 +27,7 @@ pub trait CacheSet<T> {
 pub trait AsyncCacheSet<T> {
     async fn get_or_insert(&mut self, entry: &T, report: &mut Report);
     async fn get_or_insert_once(&mut self, entry: &T, report: &mut Report);
+    async fn update(&mut self, entry: &T, report: &mut Report);
     async fn invalidate(&mut self, entry: &T);
     fn invalidate_all(&mut self);
     fn invalidate_entries_if(&mut self, entry: &T);
@@ -56,9 +61,21 @@ impl Counters {
     }
 }
 
-const VALUE_LEN: usize = 256;
+const VALUE_LEN: usize = 128;
 
-pub(crate) fn make_value(key: usize) -> Arc<[u8]> {
+pub(crate) fn make_value(config: &Config, key: usize, req_id: usize) -> (u32, Arc<[u8]>) {
+    let policy_weight = if config.size_aware {
+        let mut hasher = FnvBuildHasher::default().build_hasher();
+        req_id.hash(&mut hasher);
+        // len will be [4 .. 2^16)
+        (hasher.finish() as u16).max(4) as u32
+    } else {
+        0
+    };
+    (policy_weight, do_make_value(key))
+}
+
+fn do_make_value(key: usize) -> Arc<[u8]> {
     let mut value = vec![0; VALUE_LEN].into_boxed_slice();
     value[0] = (key % 256) as u8;
     value.into()

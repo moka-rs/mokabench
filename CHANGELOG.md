@@ -1,5 +1,21 @@
 # Mokabench &mdash; Change Log
 
+## Version 0.3.0
+
+### Added
+
+- Added a CLI option `--size-aware`, which enables the size aware (weight-based)
+  cache management.
+
+## Changed
+
+- Reduced the value size from 256 bytes to 128 bytes.
+
+### Removed
+
+- Dropped support for Moka v0.6.x.
+
+
 ## Version 0.2.0
 
 ### Fixed
