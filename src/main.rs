@@ -59,11 +59,11 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
 const OPTION_TTL: &str = "ttl";
 const OPTION_TTI: &str = "tti";
 const OPTION_NUM_CLIENTS: &str = "num-clients";
-const OPTION_INSERT_ONCE: &str = "enable-insert-once";
+const OPTION_INSERT_ONCE: &str = "insert-once";
 const OPTION_INSERTION_DELAY: &str = "insertion-delay";
-const OPTION_INVALIDATE: &str = "enable-invalidate";
-const OPTION_INVALIDATE_ALL: &str = "enable-invalidate-all";
-const OPTION_INVALIDATE_IF: &str = "enable-invalidate-entries-if";
+const OPTION_INVALIDATE: &str = "invalidate";
+const OPTION_INVALIDATE_ALL: &str = "invalidate-all";
+const OPTION_INVALIDATE_IF: &str = "invalidate-entries-if";
 
 fn create_config() -> anyhow::Result<Config> {
     let matches = App::new("Moka Bench")
@@ -132,19 +132,19 @@ fn create_config() -> anyhow::Result<Config> {
         })?),
     };
 
-    let enable_insert_once = matches.is_present(OPTION_INSERT_ONCE);
-    let enable_invalidate = matches.is_present(OPTION_INVALIDATE);
-    let enable_invalidate_all = matches.is_present(OPTION_INVALIDATE_ALL);
-    let enable_invalidate_entries_if = matches.is_present(OPTION_INVALIDATE_IF);
+    let insert_once = matches.is_present(OPTION_INSERT_ONCE);
+    let invalidate = matches.is_present(OPTION_INVALIDATE);
+    let invalidate_all = matches.is_present(OPTION_INVALIDATE_ALL);
+    let invalidate_entries_if = matches.is_present(OPTION_INVALIDATE_IF);
 
     Ok(Config::new(
         ttl_secs,
         tti_secs,
         num_clients,
         insertion_delay_micros,
-        enable_insert_once,
-        enable_invalidate,
-        enable_invalidate_all,
-        enable_invalidate_entries_if,
+        insert_once,
+        invalidate,
+        invalidate_all,
+        invalidate_entries_if,
     ))
 }

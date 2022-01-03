@@ -41,12 +41,12 @@ pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
         let line = line?;
         counter += 1;
         let entry = parser.parse(&line)?;
-        if config.enable_invalidate_all && counter % 100_000 == 0 {
+        if config.invalidate_all && counter % 100_000 == 0 {
             cache_set.invalidate_all();
             cache_set.get_or_insert(&entry, &mut report);
-        } else if config.enable_invalidate && counter % 8 == 0 {
+        } else if config.invalidate && counter % 8 == 0 {
             cache_set.invalidate(&entry);
-        } else if config.enable_insert_once && counter % 3 == 0 {
+        } else if config.insert_once && counter % 3 == 0 {
             cache_set.get_or_insert_once(&entry, &mut report);
         } else {
             cache_set.get_or_insert(&entry, &mut report);
@@ -72,14 +72,14 @@ where
     for line in chunk {
         let line = line?;
         *counter += 1;
-        if config.enable_invalidate_all && *counter % 100_000 == 0 {
+        if config.invalidate_all && *counter % 100_000 == 0 {
             ops.push(Op::InvalidateAll);
             ops.push(Op::GetOrInsert(line));
-        } else if config.enable_invalidate_entries_if && *counter % 5_000 == 0 {
+        } else if config.invalidate_entries_if && *counter % 5_000 == 0 {
             ops.push(Op::InvalidateEntriesIf(line));
-        } else if config.enable_invalidate && *counter % 8 == 0 {
+        } else if config.invalidate && *counter % 8 == 0 {
             ops.push(Op::Invalidate(line));
-        } else if config.enable_insert_once && *counter % 3 == 0 {
+        } else if config.insert_once && *counter % 3 == 0 {
             ops.push(Op::GetOrInsertOnce(line));
         } else {
             ops.push(Op::GetOrInsert(line));

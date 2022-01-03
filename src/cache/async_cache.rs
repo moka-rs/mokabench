@@ -33,7 +33,7 @@ impl AsyncCache {
         if let Some(tti) = config.tti {
             builder = builder.time_to_idle(tti)
         }
-        if config.enable_invalidate_entries_if {
+        if config.invalidate_entries_if {
             builder = builder.support_invalidation_closures();
         }
 
