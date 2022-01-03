@@ -12,14 +12,14 @@ use std::sync::Arc;
 use super::{BuildFnvHasher, Counters, InitClosureType};
 
 pub struct SegmentedMoka {
-    _config: Config,
+    config: Config,
     cache: SegmentedCache<usize, Arc<[u8]>, BuildFnvHasher>,
 }
 
 impl Clone for SegmentedMoka {
     fn clone(&self) -> Self {
         Self {
-            _config: self._config.clone(),
+            config: self.config.clone(),
             cache: self.cache.clone(),
         }
     }
@@ -43,7 +43,7 @@ impl SegmentedMoka {
         }
 
         Self {
-            _config: config.clone(),
+            config: config.clone(),
             cache: builder.build_with_hasher(BuildFnvHasher::default()),
         }
     }
@@ -54,12 +54,13 @@ impl SegmentedMoka {
 
     fn insert(&self, key: usize) {
         let value = super::make_value(key);
-        // std::thread::sleep(std::time::Duration::from_micros(500));
+        super::sleep_thread_for_insertion(&self.config);
         self.cache.insert(key, value);
     }
 
     fn get_or_insert_with(&self, key: usize, counters: Arc<RwLock<Counters>>) {
         self.cache.get_or_insert_with(key, || {
+            super::sleep_thread_for_insertion(&self.config);
             counters.write().inserted();
             super::make_value(key)
         });
@@ -75,6 +76,7 @@ impl SegmentedMoka {
             InitClosureType::GetOrTryInsertWithError1 => self
                 .cache
                 .get_or_try_insert_with(key, || {
+                    super::sleep_thread_for_insertion(&self.config);
                     counters.write().inserted();
                     Ok(super::make_value(key)) as Result<_, InitClosureError1>
                 })
@@ -82,6 +84,7 @@ impl SegmentedMoka {
             InitClosureType::GetOrTyyInsertWithError2 => self
                 .cache
                 .get_or_try_insert_with(key, || {
+                    super::sleep_thread_for_insertion(&self.config);
                     counters.write().inserted();
                     Ok(super::make_value(key)) as Result<_, InitClosureError2>
                 })

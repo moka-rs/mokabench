@@ -6,7 +6,7 @@ use std::sync::Arc;
 use super::{CacheSet, Counters, BuildFnvHasher};
 
 pub struct UnsyncCache {
-    _config: Config,
+    config: Config,
     cache: Cache<usize, Arc<[u8]>, BuildFnvHasher>,
 }
 
@@ -22,7 +22,7 @@ impl UnsyncCache {
             builder = builder.time_to_idle(tti)
         }
         Self {
-            _config: config.clone(),
+            config: config.clone(),
             cache: builder.build_with_hasher(BuildFnvHasher::default()),
         }
     }
@@ -33,7 +33,7 @@ impl UnsyncCache {
 
     fn insert(&mut self, key: usize) {
         let value = super::make_value(key);
-        // std::thread::sleep(std::time::Duration::from_micros(500));
+        super::sleep_thread_for_insertion(&self.config);
         self.cache.insert(key, value);
     }
 

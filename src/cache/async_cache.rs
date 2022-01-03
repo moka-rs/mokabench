@@ -7,14 +7,14 @@ use parking_lot::RwLock;
 use std::sync::Arc;
 
 pub struct AsyncCache {
-    _config: Config,
+    config: Config,
     cache: Cache<usize, Arc<[u8]>, BuildFnvHasher>,
 }
 
 impl Clone for AsyncCache {
     fn clone(&self) -> Self {
         Self {
-            _config: self._config.clone(),
+            config: self.config.clone(),
             cache: self.cache.clone(),
         }
     }
@@ -36,7 +36,7 @@ impl AsyncCache {
         }
 
         Self {
-            _config: config.clone(),
+            config: config.clone(),
             cache: builder.build_with_hasher(BuildFnvHasher::default()),
         }
     }
@@ -47,13 +47,14 @@ impl AsyncCache {
 
     async fn insert(&self, key: usize) {
         let value = super::make_value(key);
-        // tokio::task::sleep(std::time::Duration::from_micros(500));
+        super::sleep_task_for_insertion(&self.config).await;
         self.cache.insert(key, value).await;
     }
 
     async fn get_or_insert_with(&self, key: usize, counters: Arc<RwLock<Counters>>) {
         self.cache
             .get_or_insert_with(key, async {
+                super::sleep_task_for_insertion(&self.config).await;
                 counters.write().inserted();
                 super::make_value(key)
             })
@@ -70,6 +71,7 @@ impl AsyncCache {
             InitClosureType::GetOrTryInsertWithError1 => self
                 .cache
                 .get_or_try_insert_with(key, async {
+                    super::sleep_task_for_insertion(&self.config).await;
                     counters.write().inserted();
                     Ok(super::make_value(key)) as Result<_, InitClosureError1>
                 })
@@ -78,6 +80,7 @@ impl AsyncCache {
             InitClosureType::GetOrTyyInsertWithError2 => self
                 .cache
                 .get_or_try_insert_with(key, async {
+                    super::sleep_task_for_insertion(&self.config).await;
                     counters.write().inserted();
                     Ok(super::make_value(key)) as Result<_, InitClosureError2>
                 })

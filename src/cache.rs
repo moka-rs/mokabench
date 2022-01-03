@@ -1,6 +1,6 @@
 use std::{sync::Arc, hash::BuildHasher};
 
-use crate::Report;
+use crate::{Report, config::Config};
 
 use async_trait::async_trait;
 use fnv::FnvHasher;
@@ -56,6 +56,18 @@ pub(crate) fn make_value(key: usize) -> Arc<[u8]> {
     let mut value = vec![0; VALUE_LEN].into_boxed_slice();
     value[0] = (key % 256) as u8;
     value.into()
+}
+
+pub(crate) fn sleep_thread_for_insertion(config: &Config) {
+    if let Some(delay) = config.insertion_delay {
+        std::thread::sleep(delay);
+    }
+}
+
+pub(crate) async fn sleep_task_for_insertion(config: &Config) {
+    if let Some(delay) = config.insertion_delay {
+        async_io::Timer::after(delay).await;
+    }
 }
 
 const HASH_SEED_KEY: u64 = 982922761776577566;

@@ -8,11 +8,12 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
+async-io = "1.6"
 async-trait = "0.1"
 clap = "3.0"
 crossbeam-channel = "0.5"
 fnv = "1.0"
-futures = "0.3"
+futures-util = "0.3"
 itertools = "0.10"
 parking_lot = "0.11"
 thiserror = "1.0"

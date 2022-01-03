@@ -12,14 +12,14 @@ use std::sync::Arc;
 use super::{BuildFnvHasher, CacheSet, Counters, InitClosureType};
 
 pub struct SyncCache {
-    _config: Config,
+    config: Config,
     cache: Cache<usize, Arc<[u8]>, BuildFnvHasher>,
 }
 
 impl Clone for SyncCache {
     fn clone(&self) -> Self {
         Self {
-            _config: self._config.clone(),
+            config: self.config.clone(),
             cache: self.cache.clone(),
         }
     }
@@ -41,13 +41,24 @@ impl SyncCache {
         }
 
         Self {
-            _config: config.clone(),
+            config: config.clone(),
             cache: builder.build_with_hasher(BuildFnvHasher::default()),
         }
     }
 
+    fn get(&self, key: &usize) -> bool {
+        self.cache.get(key).is_some()
+    }
+
+    fn insert(&self, key: usize) {
+        let value = super::make_value(key);
+        super::sleep_thread_for_insertion(&self.config);
+        self.cache.insert(key, value);
+    }
+
     fn get_or_insert_with(&self, key: usize, counters: Arc<RwLock<Counters>>) {
         self.cache.get_or_insert_with(key, || {
+            super::sleep_thread_for_insertion(&self.config);
             counters.write().inserted();
             super::make_value(key)
         });
@@ -63,6 +74,7 @@ impl SyncCache {
             InitClosureType::GetOrTryInsertWithError1 => self
                 .cache
                 .get_or_try_insert_with(key, || {
+                    super::sleep_thread_for_insertion(&self.config);
                     counters.write().inserted();
                     Ok(super::make_value(key)) as Result<_, InitClosureError1>
                 })
@@ -70,22 +82,13 @@ impl SyncCache {
             InitClosureType::GetOrTyyInsertWithError2 => self
                 .cache
                 .get_or_try_insert_with(key, || {
+                    super::sleep_thread_for_insertion(&self.config);
                     counters.write().inserted();
                     Ok(super::make_value(key)) as Result<_, InitClosureError2>
                 })
                 .is_ok(),
             _ => unreachable!(),
         };
-    }
-
-    fn get(&self, key: &usize) -> bool {
-        self.cache.get(key).is_some()
-    }
-
-    fn insert(&self, key: usize) {
-        let value = super::make_value(key);
-        // std::thread::sleep(std::time::Duration::from_micros(500));
-        self.cache.insert(key, value);
     }
 }
 

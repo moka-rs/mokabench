@@ -3,14 +3,15 @@
         "CARGO_TARGET_DIR": "target/ra"
     },
     "cSpell.words": [
-        "Dharmendra",
-        "Modha",
-        "Toolchain",
         "clippy",
+        "Dharmendra",
+        "Hasher",
         "itertools",
+        "Modha",
         "moka",
         "mokabench",
         "thiserror",
+        "Toolchain",
         "unsync"
     ],
     "files.watcherExclude": {

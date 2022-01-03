@@ -11,7 +11,8 @@ async fn main() -> anyhow::Result<()> {
 
     println!("{}", Report::cvs_header());
 
-    const CAPACITIES: &[usize] = &[100_000, 2_000_000];
+    const CAPACITIES: &[usize] = &[100_000, 500_000, 1_000_000];
+    // const CAPACITIES: &[usize] = &[100_000, 2_000_000];
     // const CAPACITIES: &[usize] = &[100_000];
 
     for capacity in CAPACITIES {
@@ -59,6 +60,7 @@ const OPTION_TTL: &str = "ttl";
 const OPTION_TTI: &str = "tti";
 const OPTION_NUM_CLIENTS: &str = "num-clients";
 const OPTION_INSERT_ONCE: &str = "enable-insert-once";
+const OPTION_INSERTION_DELAY: &str = "insertion-delay";
 const OPTION_INVALIDATE: &str = "enable-invalidate";
 const OPTION_INVALIDATE_ALL: &str = "enable-invalidate-all";
 const OPTION_INVALIDATE_IF: &str = "enable-invalidate-entries-if";
@@ -81,6 +83,13 @@ fn create_config() -> anyhow::Result<Config> {
             Arg::new(OPTION_NUM_CLIENTS)
                 .short('n')
                 .long(OPTION_NUM_CLIENTS)
+                .takes_value(true)
+                .use_delimiter(false),
+        )
+        .arg(
+            Arg::new(OPTION_INSERTION_DELAY)
+                .short('d')
+                .long(OPTION_INSERTION_DELAY)
                 .takes_value(true)
                 .use_delimiter(false),
         )
@@ -113,6 +122,16 @@ fn create_config() -> anyhow::Result<Config> {
         })?),
     };
 
+    let insertion_delay_micros = match matches.value_of(OPTION_INSERTION_DELAY) {
+        None => None,
+        Some(v) => Some(v.parse().with_context(|| {
+            format!(
+                r#"Cannot parse insertion-delay "{}" as a positive integer"#,
+                v
+            )
+        })?),
+    };
+
     let enable_insert_once = matches.is_present(OPTION_INSERT_ONCE);
     let enable_invalidate = matches.is_present(OPTION_INVALIDATE);
     let enable_invalidate_all = matches.is_present(OPTION_INVALIDATE_ALL);
@@ -122,6 +141,7 @@ fn create_config() -> anyhow::Result<Config> {
         ttl_secs,
         tti_secs,
         num_clients,
+        insertion_delay_micros,
         enable_insert_once,
         enable_invalidate,
         enable_invalidate_all,

@@ -300,7 +300,7 @@ pub async fn run_multi_tasks(
     std::mem::drop(send);
 
     // Wait for the workers to finish and collect their reports.
-    let reports = futures::future::join_all(handles).await;
+    let reports = futures_util::future::join_all(handles).await;
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.

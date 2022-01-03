@@ -24,7 +24,7 @@ impl Report {
         }
     }
 
-    pub fn hit_rate(&self) -> f64 {
+    pub fn hit_ratio(&self) -> f64 {
         (self.hit_count as f64) / (self.read_count as f64)
     }
 
@@ -37,7 +37,7 @@ impl Report {
     // Formatting (CSV)
 
     pub fn cvs_header() -> String {
-        "Cache, Max Capacity, Clients, Inserts, Reads, Hit Rate, Duration Secs".into()
+        "Cache, Max Capacity, Clients, Inserts, Reads, Hit Ratio, Duration Secs".into()
     }
 
     pub fn to_csv_record(&self) -> String {
@@ -60,7 +60,7 @@ impl Report {
             num_workers,
             self.insert_count,
             self.read_count,
-            self.hit_rate() * 100.0,
+            self.hit_ratio() * 100.0,
             duration
         )
     }
