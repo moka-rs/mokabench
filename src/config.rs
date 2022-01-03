@@ -12,6 +12,8 @@ pub struct Config {
     pub enable_invalidate_entries_if: bool,
 }
 
+// https://rust-lang.github.io/rust-clippy/master/index.html#too_many_arguments
+#[allow(clippy::too_many_arguments)]
 impl Config {
     pub fn new(
         ttl_secs: Option<u64>,
