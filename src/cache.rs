@@ -32,6 +32,7 @@ pub trait AsyncCacheSet<T> {
 pub(crate) struct Counters {
     insert_count: usize,
     read_count: usize,
+    hit_count: usize,
 }
 
 impl Counters {
@@ -39,14 +40,19 @@ impl Counters {
         self.insert_count += 1;
     }
 
-    pub(crate) fn read(&mut self) {
+    pub(crate) fn read_hit(&mut self) {
+        self.read_count += 1;
+        self.hit_count += 1;
+    }
+
+    pub(crate) fn read_missed(&mut self) {
         self.read_count += 1;
     }
 
     pub(crate) fn add_to_report(&self, report: &mut Report) {
         report.insert_count += self.insert_count;
         report.read_count += self.read_count;
-        report.hit_count += self.read_count - self.insert_count;
+        report.hit_count += self.hit_count;
     }
 }
 

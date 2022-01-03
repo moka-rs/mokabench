@@ -1,3 +1,4 @@
+use super::{BuildFnvHasher, Counters, InitClosureType};
 use crate::{
     cache::{CacheSet, InitClosureError1, InitClosureError2},
     config::Config,
@@ -6,10 +7,10 @@ use crate::{
 };
 
 use moka::sync::{CacheBuilder, SegmentedCache};
-use parking_lot::RwLock;
-use std::sync::Arc;
-
-use super::{BuildFnvHasher, Counters, InitClosureType};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 pub struct SegmentedMoka {
     config: Config,
@@ -58,10 +59,10 @@ impl SegmentedMoka {
         self.cache.insert(key, value);
     }
 
-    fn get_or_insert_with(&self, key: usize, counters: Arc<RwLock<Counters>>) {
+    fn get_or_insert_with(&self, key: usize, is_inserted: Arc<AtomicBool>) {
         self.cache.get_or_insert_with(key, || {
             super::sleep_thread_for_insertion(&self.config);
-            counters.write().inserted();
+            is_inserted.store(true, Ordering::Release);
             super::make_value(key)
         });
     }
@@ -70,14 +71,14 @@ impl SegmentedMoka {
         &self,
         ty: InitClosureType,
         key: usize,
-        counters: Arc<RwLock<Counters>>,
+        is_inserted: Arc<AtomicBool>,
     ) {
         match ty {
             InitClosureType::GetOrTryInsertWithError1 => self
                 .cache
                 .get_or_try_insert_with(key, || {
                     super::sleep_thread_for_insertion(&self.config);
-                    counters.write().inserted();
+                    is_inserted.store(true, Ordering::Release);
                     Ok(super::make_value(key)) as Result<_, InitClosureError1>
                 })
                 .is_ok(),
@@ -85,7 +86,7 @@ impl SegmentedMoka {
                 .cache
                 .get_or_try_insert_with(key, || {
                     super::sleep_thread_for_insertion(&self.config);
-                    counters.write().inserted();
+                    is_inserted.store(true, Ordering::Release);
                     Ok(super::make_value(key)) as Result<_, InitClosureError2>
                 })
                 .is_ok(),
@@ -99,31 +100,41 @@ impl CacheSet<ArcTraceEntry> for SegmentedMoka {
         let mut counters = Counters::default();
 
         for block in entry.0.clone() {
-            if !self.get(&block) {
+            if self.get(&block) {
+                counters.read_hit();
+            } else {
                 self.insert(block);
                 counters.inserted();
+                counters.read_missed();
             }
-            counters.read();
         }
 
         counters.add_to_report(report);
     }
 
     fn get_or_insert_once(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
-        let counters = Arc::new(RwLock::new(Counters::default()));
+        let mut counters = Counters::default();
+        let is_inserted = Arc::new(AtomicBool::default());
 
         for block in entry.0.clone() {
             {
-                let counters2 = Arc::clone(&counters);
+                let is_inserted2 = Arc::clone(&is_inserted);
                 match InitClosureType::select(block) {
-                    InitClosureType::GetOrInsert => self.get_or_insert_with(block, counters2),
-                    ty => self.get_or_try_insert_with(ty, block, counters2),
+                    InitClosureType::GetOrInsert => self.get_or_insert_with(block, is_inserted2),
+                    ty => self.get_or_try_insert_with(ty, block, is_inserted2),
                 }
             }
-            counters.write().read();
+
+            if is_inserted.load(Ordering::Acquire) {
+                counters.inserted();
+                counters.read_missed();
+                is_inserted.store(false, Ordering::Release);
+            } else {
+                counters.read_hit();
+            }
         }
 
-        counters.read().add_to_report(report);
+        counters.add_to_report(report);
     }
 
     fn invalidate(&mut self, entry: &ArcTraceEntry) {

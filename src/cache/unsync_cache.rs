@@ -1,9 +1,8 @@
+use super::{BuildFnvHasher, CacheSet, Counters};
 use crate::{config::Config, parser::ArcTraceEntry, report::Report};
 
 use moka::unsync::{Cache, CacheBuilder};
 use std::sync::Arc;
-
-use super::{BuildFnvHasher, CacheSet, Counters};
 
 pub struct UnsyncCache {
     config: Config,
@@ -50,11 +49,13 @@ impl CacheSet<ArcTraceEntry> for UnsyncCache {
         let mut counters = Counters::default();
 
         for block in entry.0.clone() {
-            if !self.get(&block) {
+            if self.get(&block) {
+                counters.read_hit();
+            } else {
                 self.insert(block);
                 counters.inserted();
+                counters.read_missed();
             }
-            counters.read();
         }
 
         counters.add_to_report(report);
