@@ -3,7 +3,7 @@ use crate::{config::Config, parser::ArcTraceEntry, report::Report};
 use moka::unsync::{Cache, CacheBuilder};
 use std::sync::Arc;
 
-use super::{CacheSet, Counters, BuildFnvHasher};
+use super::{BuildFnvHasher, CacheSet, Counters};
 
 pub struct UnsyncCache {
     config: Config,

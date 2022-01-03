@@ -1,6 +1,6 @@
-use std::{sync::Arc, hash::BuildHasher};
+use std::{hash::BuildHasher, sync::Arc};
 
-use crate::{Report, config::Config};
+use crate::{config::Config, Report};
 
 use async_trait::async_trait;
 use fnv::FnvHasher;
