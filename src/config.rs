@@ -1,7 +1,10 @@
 use std::time::Duration;
 
+use crate::trace_file::TraceFile;
+
 #[derive(Clone, Debug)]
 pub struct Config {
+    pub trace_file: TraceFile,
     pub ttl: Option<Duration>,
     pub tti: Option<Duration>,
     pub num_clients: Option<u16>,
@@ -17,6 +20,7 @@ pub struct Config {
 #[allow(clippy::too_many_arguments)]
 impl Config {
     pub fn new(
+        trace_file: TraceFile,
         ttl_secs: Option<u64>,
         tti_secs: Option<u64>,
         num_clients: Option<u16>,
@@ -28,6 +32,7 @@ impl Config {
         size_aware: bool,
     ) -> Self {
         Self {
+            trace_file,
             ttl: ttl_secs.map(Duration::from_secs),
             tti: tti_secs.map(Duration::from_secs),
             num_clients,

@@ -8,6 +8,7 @@ mod cache;
 pub mod config;
 mod parser;
 mod report;
+mod trace_file;
 
 use cache::{
     async_cache::SharedAsyncCache, sync_cache::SharedSyncCache,
@@ -16,8 +17,7 @@ use cache::{
 use parser::{ArcTraceEntry, TraceParser};
 
 pub use report::Report;
-
-pub const TRACE_FILE: &str = "./datasets/S3.lis";
+pub use trace_file::TraceFile;
 
 pub(crate) enum Op {
     GetOrInsert(String, usize),
@@ -29,7 +29,7 @@ pub(crate) enum Op {
 }
 
 pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
-    let f = File::open(TRACE_FILE)?;
+    let f = File::open(config.trace_file.path())?;
     let reader = BufReader::new(f);
     let mut parser = parser::ArcTraceParser;
     let mut max_cap = capacity.try_into().unwrap();
@@ -183,7 +183,7 @@ pub fn run_multi_threads(
     capacity: usize,
     num_clients: u16,
 ) -> anyhow::Result<Report> {
-    let f = File::open(TRACE_FILE)?;
+    let f = File::open(config.trace_file.path())?;
     let reader = BufReader::new(f);
     let mut max_cap = capacity.try_into().unwrap();
     if config.size_aware {
@@ -240,7 +240,7 @@ pub fn run_multi_thread_segmented(
     num_clients: u16,
     num_segments: usize,
 ) -> anyhow::Result<Report> {
-    let f = File::open(TRACE_FILE)?;
+    let f = File::open(config.trace_file.path())?;
     let reader = BufReader::new(f);
     let mut max_cap = capacity.try_into().unwrap();
     if config.size_aware {
@@ -295,7 +295,7 @@ pub async fn run_multi_tasks(
     capacity: usize,
     num_clients: u16,
 ) -> anyhow::Result<Report> {
-    let f = File::open(TRACE_FILE)?;
+    let f = File::open(config.trace_file.path())?;
     let reader = BufReader::new(f);
     let mut max_cap = capacity.try_into().unwrap();
     if config.size_aware {

@@ -4,6 +4,7 @@
 
 ### Added
 
+- Support more trace data: ARC-DS1 and ARC-OLTP.
 - Added a CLI option `--size-aware`, which enables the size aware (weight-based)
   cache management.
 

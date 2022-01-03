@@ -1,5 +1,5 @@
 use anyhow::Context;
-use mokabench::{self, config::Config, Report};
+use mokabench::{self, config::Config, Report, TraceFile};
 
 use clap::{App, Arg};
 
@@ -11,11 +11,7 @@ async fn main() -> anyhow::Result<()> {
 
     println!("{}", Report::cvs_header());
 
-    const CAPACITIES: &[usize] = &[100_000, 400_000, 800_000];
-    // const CAPACITIES: &[usize] = &[100_000, 2_000_000];
-    // const CAPACITIES: &[usize] = &[100_000];
-
-    for capacity in CAPACITIES {
+    for capacity in config.trace_file.default_capacities() {
         run_with_capacity(&config, *capacity).await?
     }
 
@@ -34,6 +30,10 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
 
     let report = mokabench::run_single(config, capacity)?;
     println!("{}", report.to_csv_record());
+
+    if capacity >= 2_000_000 {
+        return Ok(());
+    }
 
     for num_clients in num_clients_slice {
         let report = mokabench::run_multi_threads(config, capacity, *num_clients)?;
@@ -56,6 +56,7 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
     Ok(())
 }
 
+const OPTION_TRACE_FILE: &str = "trace-file";
 const OPTION_TTL: &str = "ttl";
 const OPTION_TTI: &str = "tti";
 const OPTION_NUM_CLIENTS: &str = "num-clients";
@@ -68,6 +69,14 @@ const OPTION_SIZE_AWARE: &str = "size-aware";
 
 fn create_config() -> anyhow::Result<Config> {
     let matches = App::new("Moka Bench")
+        .arg(
+            Arg::new(OPTION_TRACE_FILE)
+                .short('f')
+                .long(OPTION_TRACE_FILE)
+                .help("The trace file (s3, ds1 or oltp). default: s3")
+                .takes_value(true)
+                .use_delimiter(false),
+        )
         .arg(
             Arg::new(OPTION_TTL)
                 .long(OPTION_TTL)
@@ -100,6 +109,9 @@ fn create_config() -> anyhow::Result<Config> {
         .arg(Arg::new(OPTION_INVALIDATE_IF).long(OPTION_INVALIDATE_IF))
         .arg(Arg::new(OPTION_SIZE_AWARE).long(OPTION_SIZE_AWARE))
         .get_matches();
+
+    let trace_file = matches.value_of(OPTION_TRACE_FILE).unwrap_or_else(|| "s3".into());
+    let trace_file = TraceFile::try_from(trace_file)?;
 
     let ttl_secs = match matches.value_of(OPTION_TTL) {
         None => None,
@@ -141,6 +153,7 @@ fn create_config() -> anyhow::Result<Config> {
     let size_aware = matches.is_present(OPTION_SIZE_AWARE);
 
     Ok(Config::new(
+        trace_file,
         ttl_secs,
         tti_secs,
         num_clients,
