@@ -1,6 +1,6 @@
 [package]
 name = "mokabench"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Tatsuya Kawano <tatsuya@hibaridb.org>"]
 edition = "2021"
 
@@ -18,8 +18,8 @@ itertools = "0.10"
 parking_lot = "0.11"
 thiserror = "1.0"
 
-moka = { version = "0.6", features = ["future"] }
-# moka = { git = "https://github.com/moka-rs/moka", branch = "master", features = ["future"] }
+# moka = { version = "0.6", features = ["future"] }
+moka = { git = "https://github.com/moka-rs/moka", branch = "master", features = ["future"] }
 # moka = { path = "../moka", features = ["future"] }
 
 # actix-rt = "2"
