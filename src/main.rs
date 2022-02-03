@@ -65,6 +65,7 @@ const OPTION_INSERTION_DELAY: &str = "insertion-delay";
 const OPTION_INVALIDATE: &str = "invalidate";
 const OPTION_INVALIDATE_ALL: &str = "invalidate-all";
 const OPTION_INVALIDATE_IF: &str = "invalidate-entries-if";
+const OPTION_REPEAT: &str = "repeat";
 const OPTION_SIZE_AWARE: &str = "size-aware";
 
 fn create_config() -> anyhow::Result<Config> {
@@ -93,6 +94,13 @@ fn create_config() -> anyhow::Result<Config> {
             Arg::new(OPTION_NUM_CLIENTS)
                 .short('n')
                 .long(OPTION_NUM_CLIENTS)
+                .takes_value(true)
+                .use_delimiter(false),
+        )
+        .arg(
+            Arg::new(OPTION_REPEAT)
+                .short('r')
+                .long(OPTION_REPEAT)
                 .takes_value(true)
                 .use_delimiter(false),
         )
@@ -136,6 +144,13 @@ fn create_config() -> anyhow::Result<Config> {
         })?),
     };
 
+    let repeat = match matches.value_of(OPTION_REPEAT) {
+        None => None,
+        Some(v) => Some(v.parse().with_context(|| {
+            format!(r#"Cannot parse repeat "{}" as a positive integer"#, v)
+        })?),
+    };
+
     let insertion_delay_micros = match matches.value_of(OPTION_INSERTION_DELAY) {
         None => None,
         Some(v) => Some(v.parse().with_context(|| {
@@ -157,6 +172,7 @@ fn create_config() -> anyhow::Result<Config> {
         ttl_secs,
         tti_secs,
         num_clients,
+        repeat,
         insertion_delay_micros,
         insert_once,
         invalidate,

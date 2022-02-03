@@ -295,8 +295,6 @@ pub async fn run_multi_tasks(
     capacity: usize,
     num_clients: u16,
 ) -> anyhow::Result<Report> {
-    let f = File::open(config.trace_file.path())?;
-    let reader = BufReader::new(f);
     let mut max_cap = capacity.try_into().unwrap();
     if config.size_aware {
         max_cap *= 2u64.pow(15);
@@ -322,9 +320,14 @@ pub async fn run_multi_tasks(
 
     let mut counter = 0;
     let instant = Instant::now();
-    for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-        let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
-        send.send(commands)?;
+
+    for _ in 0..(config.repeat.unwrap_or(1)) {
+        let f = File::open(config.trace_file.path())?;
+        let reader = BufReader::new(f);
+        for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
+            let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
+            send.send(commands)?;
+        }
     }
 
     // Drop the sender channel to notify the workers that we are finished.
