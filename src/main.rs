@@ -1,7 +1,7 @@
 use anyhow::Context;
 use mokabench::{self, config::Config, Report, TraceFile};
 
-use clap::{App, Arg};
+use clap::{Command, Arg};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -28,8 +28,10 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
         NUM_CLIENTS_ARRAY
     };
 
-    let report = mokabench::run_single(config, capacity)?;
-    println!("{}", report.to_csv_record());
+    if !config.insert_once {
+        let report = mokabench::run_single(config, capacity)?;
+        println!("{}", report.to_csv_record());
+    }
 
     if capacity >= 2_000_000 {
         return Ok(());
@@ -43,6 +45,13 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
     for num_clients in num_clients_slice {
         let report = mokabench::run_multi_tasks(config, capacity, *num_clients).await?;
         println!("{}", report.to_csv_record());
+    }
+
+    if !config.insert_once && !config.invalidate_entries_if {
+        for num_clients in num_clients_slice {
+            let report = mokabench::run_multi_threads_dash_cache(config, capacity, *num_clients)?;
+            println!("{}", report.to_csv_record());
+        }
     }
 
     let num_segments = 8;
@@ -69,14 +78,14 @@ const OPTION_REPEAT: &str = "repeat";
 const OPTION_SIZE_AWARE: &str = "size-aware";
 
 fn create_config() -> anyhow::Result<Config> {
-    let matches = App::new("Moka Bench")
+    let matches = Command::new("Moka Bench")
         .arg(
             Arg::new(OPTION_TRACE_FILE)
                 .short('f')
                 .long(OPTION_TRACE_FILE)
                 .help("The trace file (s3, ds1 or oltp). default: s3")
                 .takes_value(true)
-                .use_delimiter(false),
+                .use_value_delimiter(false),
         )
         .arg(
             Arg::new(OPTION_TTL)
@@ -95,21 +104,21 @@ fn create_config() -> anyhow::Result<Config> {
                 .short('n')
                 .long(OPTION_NUM_CLIENTS)
                 .takes_value(true)
-                .use_delimiter(false),
+                .use_value_delimiter(false),
         )
         .arg(
             Arg::new(OPTION_REPEAT)
                 .short('r')
                 .long(OPTION_REPEAT)
                 .takes_value(true)
-                .use_delimiter(false),
+                .use_value_delimiter(false),
         )
         .arg(
             Arg::new(OPTION_INSERTION_DELAY)
                 .short('d')
                 .long(OPTION_INSERTION_DELAY)
                 .takes_value(true)
-                .use_delimiter(false),
+                .use_value_delimiter(false),
         )
         .arg(Arg::new(OPTION_INSERT_ONCE).long(OPTION_INSERT_ONCE))
         .arg(Arg::new(OPTION_INVALIDATE).long(OPTION_INVALIDATE))
@@ -118,7 +127,9 @@ fn create_config() -> anyhow::Result<Config> {
         .arg(Arg::new(OPTION_SIZE_AWARE).long(OPTION_SIZE_AWARE))
         .get_matches();
 
-    let trace_file = matches.value_of(OPTION_TRACE_FILE).unwrap_or_else(|| "s3".into());
+    let trace_file = matches
+        .value_of(OPTION_TRACE_FILE)
+        .unwrap_or_else(|| "s3".into());
     let trace_file = TraceFile::try_from(trace_file)?;
 
     let ttl_secs = match matches.value_of(OPTION_TTL) {
@@ -146,9 +157,10 @@ fn create_config() -> anyhow::Result<Config> {
 
     let repeat = match matches.value_of(OPTION_REPEAT) {
         None => None,
-        Some(v) => Some(v.parse().with_context(|| {
-            format!(r#"Cannot parse repeat "{}" as a positive integer"#, v)
-        })?),
+        Some(v) => Some(
+            v.parse()
+                .with_context(|| format!(r#"Cannot parse repeat "{}" as a positive integer"#, v))?,
+        ),
     };
 
     let insertion_delay_micros = match matches.value_of(OPTION_INSERTION_DELAY) {

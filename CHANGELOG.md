@@ -1,5 +1,16 @@
 # Mokabench &mdash; Change Log
 
+## Version 0.4.0
+
+### Added
+
+- Added a driver for `dash::Cache`, which was introduced in Moka v0.8.0.
+
+### Removed
+
+- Dropped support for Moka v0.7.x.
+
+
 ## Version 0.3.0
 
 ### Added

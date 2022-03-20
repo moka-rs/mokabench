@@ -19,6 +19,8 @@ use parser::{ArcTraceEntry, TraceParser};
 pub use report::Report;
 pub use trace_file::TraceFile;
 
+use crate::cache::dash_cache::SharedDashCache;
+
 pub(crate) enum Op {
     GetOrInsert(String, usize),
     GetOrInsertOnce(String, usize),
@@ -227,6 +229,62 @@ pub fn run_multi_threads(
 
     // Merge the reports into one.
     let mut report = Report::new("Moka Sync Cache", max_cap, Some(num_clients));
+    report.duration = Some(elapsed);
+    reports.iter().for_each(|r| report.merge(r));
+
+    Ok(report)
+}
+
+#[allow(clippy::needless_collect)] // on the `handles` variable.
+pub fn run_multi_threads_dash_cache(
+    config: &Config,
+    capacity: usize,
+    num_clients: u16,
+) -> anyhow::Result<Report> {
+    let f = File::open(config.trace_file.path())?;
+    let reader = BufReader::new(f);
+    let mut max_cap = capacity.try_into().unwrap();
+    if config.size_aware {
+        max_cap *= 2u64.pow(15);
+    }
+    let cache_set = SharedDashCache::new(config, max_cap, capacity);
+
+    const BATCH_SIZE: usize = 200;
+
+    let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
+
+    let handles = (0..num_clients)
+        .map(|_| {
+            let mut cache = cache_set.clone();
+            let ch = receive.clone();
+
+            std::thread::spawn(move || {
+                let mut report = Report::new("Moka Cache", max_cap, None);
+                process_commands(ch, &mut cache, &mut report);
+                report
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let mut counter = 0;
+    let instant = Instant::now();
+    for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
+        let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
+        send.send(commands)?;
+    }
+
+    // Drop the sender channel to notify the workers that we are finished.
+    std::mem::drop(send);
+
+    // Wait for the workers to finish and collect their reports.
+    let reports = handles
+        .into_iter()
+        .map(|h| h.join().expect("Failed"))
+        .collect::<Vec<_>>();
+    let elapsed = instant.elapsed();
+
+    // Merge the reports into one.
+    let mut report = Report::new("Moka Dash Cache", max_cap, Some(num_clients));
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 

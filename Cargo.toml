@@ -1,7 +1,6 @@
 [package]
 name = "mokabench"
-version = "0.3.0"
-authors = ["Tatsuya Kawano"]
+version = "0.4.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -18,9 +17,10 @@ itertools = "0.10"
 parking_lot = "0.12"
 thiserror = "1.0"
 
-# moka = { version = "0.7.2", features = ["future"] }
-moka = { git = "https://github.com/moka-rs/moka", branch = "master", features = ["future"] }
-# moka = { path = "../moka", features = ["future"] }
+# moka = { version = "0.8.0", features = ["future", "dash"] }
+# moka = { git = "https://github.com/moka-rs/moka", branch = "master", features = ["future", "dash"] }
+moka = { git = "https://github.com/moka-rs/moka", branch = "dashmap", features = ["future", "dash"] }
+# moka = { path = "../moka", features = ["future", "dash"] }
 
 # actix-rt = "2"
 # actix-rt = "1"

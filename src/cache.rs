@@ -10,6 +10,7 @@ use fnv::{FnvBuildHasher, FnvHasher};
 use thiserror::Error;
 
 pub(crate) mod async_cache;
+pub(crate) mod dash_cache;
 pub(crate) mod sync_cache;
 pub(crate) mod sync_segmented;
 pub(crate) mod unsync_cache;
