@@ -56,9 +56,9 @@ impl AsyncCache {
         self.cache.insert(key, value).await;
     }
 
-    async fn get_or_insert_with(&self, key: usize, req_id: usize, is_inserted: Arc<AtomicBool>) {
+    async fn get_with(&self, key: usize, req_id: usize, is_inserted: Arc<AtomicBool>) {
         self.cache
-            .get_or_insert_with(key, async {
+            .get_with(key, async {
                 super::sleep_task_for_insertion(&self.config).await;
                 is_inserted.store(true, Ordering::Release);
                 super::make_value(&self.config, key, req_id)
@@ -66,7 +66,7 @@ impl AsyncCache {
             .await;
     }
 
-    async fn get_or_try_insert_with(
+    async fn try_get_with(
         &self,
         ty: InitClosureType,
         key: usize,
@@ -76,7 +76,7 @@ impl AsyncCache {
         match ty {
             InitClosureType::GetOrTryInsertWithError1 => self
                 .cache
-                .get_or_try_insert_with(key, async {
+                .try_get_with(key, async {
                     super::sleep_task_for_insertion(&self.config).await;
                     is_inserted.store(true, Ordering::Release);
                     Ok(super::make_value(&self.config, key, req_id)) as Result<_, InitClosureError1>
@@ -85,7 +85,7 @@ impl AsyncCache {
                 .is_ok(),
             InitClosureType::GetOrTyyInsertWithError2 => self
                 .cache
-                .get_or_try_insert_with(key, async {
+                .try_get_with(key, async {
                     super::sleep_task_for_insertion(&self.config).await;
                     is_inserted.store(true, Ordering::Release);
                     Ok(super::make_value(&self.config, key, req_id)) as Result<_, InitClosureError2>
@@ -127,12 +127,9 @@ impl AsyncCacheSet<ArcTraceEntry> for AsyncCache {
                 let is_inserted2 = Arc::clone(&is_inserted);
                 match InitClosureType::select(block) {
                     InitClosureType::GetOrInsert => {
-                        self.get_or_insert_with(block, req_id, is_inserted2).await
+                        self.get_with(block, req_id, is_inserted2).await
                     }
-                    ty => {
-                        self.get_or_try_insert_with(ty, block, req_id, is_inserted2)
-                            .await
-                    }
+                    ty => self.try_get_with(ty, block, req_id, is_inserted2).await,
                 }
             }
 

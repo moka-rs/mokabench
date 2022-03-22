@@ -18,8 +18,7 @@ parking_lot = "0.12"
 thiserror = "1.0"
 
 # moka = { version = "0.8.0", features = ["future", "dash"] }
-# moka = { git = "https://github.com/moka-rs/moka", branch = "master", features = ["future", "dash"] }
-moka = { git = "https://github.com/moka-rs/moka", branch = "dashmap", features = ["future", "dash"] }
+moka = { git = "https://github.com/moka-rs/moka", branch = "master", features = ["future", "dash"] }
 # moka = { path = "../moka", features = ["future", "dash"] }
 
 # actix-rt = "2"

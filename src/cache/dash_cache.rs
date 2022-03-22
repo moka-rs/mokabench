@@ -1,4 +1,4 @@
-use super::{BuildFnvHasher, CacheSet, Counters, /* InitClosureType */};
+use super::{BuildFnvHasher, CacheSet, Counters /* InitClosureType */};
 use crate::{
     // cache::{InitClosureError1, InitClosureError2},
     config::Config,
@@ -7,10 +7,7 @@ use crate::{
 };
 
 use moka::dash::Cache;
-use std::sync::{
-    // atomic::{AtomicBool, Ordering},
-    Arc,
-};
+use std::sync::Arc;
 
 pub struct DashCache {
     config: Config,
@@ -51,7 +48,7 @@ impl DashCache {
     }
 
     fn get(&self, key: &usize) -> bool {
-        self.cache.get_if_present(key).is_some()
+        self.cache.get(key).is_some()
     }
 
     fn insert(&self, key: usize, req_id: usize) {

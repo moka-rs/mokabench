@@ -1,7 +1,7 @@
 use anyhow::Context;
 use mokabench::{self, config::Config, Report, TraceFile};
 
-use clap::{Command, Arg};
+use clap::{Arg, Command};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -127,9 +127,7 @@ fn create_config() -> anyhow::Result<Config> {
         .arg(Arg::new(OPTION_SIZE_AWARE).long(OPTION_SIZE_AWARE))
         .get_matches();
 
-    let trace_file = matches
-        .value_of(OPTION_TRACE_FILE)
-        .unwrap_or_else(|| "s3".into());
+    let trace_file = matches.value_of(OPTION_TRACE_FILE).unwrap_or("s3");
     let trace_file = TraceFile::try_from(trace_file)?;
 
     let ttl_secs = match matches.value_of(OPTION_TTL) {
