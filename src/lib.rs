@@ -28,6 +28,7 @@ pub(crate) enum Op {
     Invalidate(String, usize),
     InvalidateAll,
     InvalidateEntriesIf(String, usize),
+    Iterate,
 }
 
 pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
@@ -59,6 +60,10 @@ pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
             cache_set.get_or_insert_once(&entry, &mut report);
         } else {
             cache_set.get_or_insert(&entry, &mut report);
+        }
+
+        if config.iterate && counter % 50_000 == 0 {
+            cache_set.iterate();
         }
     }
 
@@ -94,6 +99,10 @@ where
             ops.push(Op::GetOrInsertOnce(line, *counter));
         } else {
             ops.push(Op::GetOrInsert(line, *counter));
+        }
+
+        if config.iterate && *counter % 50_000 == 0 {
+            ops.push(Op::Iterate);
         }
     }
     Ok(ops)
@@ -134,6 +143,7 @@ fn process_commands(
                         cache.invalidate_entries_if(&entry);
                     }
                 }
+                Op::Iterate => cache.iterate(),
             }
         }
     }
@@ -174,6 +184,7 @@ async fn process_commands_async(
                         cache.invalidate_entries_if(&entry);
                     }
                 }
+                Op::Iterate => cache.iterate().await,
             }
         }
     }

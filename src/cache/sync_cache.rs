@@ -173,6 +173,17 @@ impl CacheSet<ArcTraceEntry> for SyncCache {
                 .expect("invalidate_entries_if failed");
         }
     }
+
+    fn iterate(&mut self) {
+        let mut count = 0usize;
+        for _kv in &self.cache {
+            count += 1;
+
+            if count % 500 == 0 {
+                std::thread::yield_now();
+            }
+        }
+    }
 }
 
 pub struct SharedSyncCache(SyncCache);
@@ -212,5 +223,9 @@ impl CacheSet<ArcTraceEntry> for SharedSyncCache {
 
     fn invalidate_entries_if(&mut self, entry: &ArcTraceEntry) {
         self.0.invalidate_entries_if(entry);
+    }
+
+    fn iterate(&mut self) {
+        self.0.iterate();
     }
 }

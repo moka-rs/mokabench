@@ -176,6 +176,17 @@ impl AsyncCacheSet<ArcTraceEntry> for AsyncCache {
                 .expect("invalidate_entries_if failed");
         }
     }
+
+    async fn iterate(&mut self) {
+        let mut count = 0usize;
+        for _kv in &self.cache {
+            count += 1;
+
+            if count % 500 == 0 {
+                tokio::task::yield_now().await;
+            }
+        }
+    }
 }
 
 pub struct SharedAsyncCache(AsyncCache);
@@ -216,5 +227,9 @@ impl AsyncCacheSet<ArcTraceEntry> for SharedAsyncCache {
 
     fn invalidate_entries_if(&mut self, entry: &ArcTraceEntry) {
         self.0.invalidate_entries_if(entry);
+    }
+
+    async fn iterate(&mut self) {
+        self.0.iterate().await;
     }
 }

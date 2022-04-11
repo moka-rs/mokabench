@@ -14,6 +14,7 @@ pub struct Config {
     pub invalidate: bool,
     pub invalidate_all: bool,
     pub invalidate_entries_if: bool,
+    pub iterate: bool,
     pub size_aware: bool,
 }
 
@@ -31,6 +32,7 @@ impl Config {
         invalidate: bool,
         invalidate_all: bool,
         invalidate_entries_if: bool,
+        iterate: bool,
         size_aware: bool,
     ) -> Self {
         Self {
@@ -44,6 +46,7 @@ impl Config {
             invalidate,
             invalidate_all,
             invalidate_entries_if,
+            iterate,
             size_aware,
         }
     }

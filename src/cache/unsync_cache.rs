@@ -95,4 +95,8 @@ impl CacheSet<ArcTraceEntry> for UnsyncCache {
     fn invalidate_entries_if(&mut self, entry: &ArcTraceEntry) {
         self.invalidate_entries_if(entry);
     }
+
+    fn iterate(&mut self) {
+        self.cache.iter().count();
+    }
 }

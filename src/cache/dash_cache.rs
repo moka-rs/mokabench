@@ -180,6 +180,18 @@ impl CacheSet<ArcTraceEntry> for DashCache {
     //             .expect("invalidate_entries_if failed");
     //     }
     // }
+
+    fn iterate(&mut self) {
+        let mut count = 0usize;
+        for entry in &self.cache {
+            entry.key();
+            count += 1;
+
+            if count % 500 == 0 {
+                std::thread::yield_now();
+            }
+        }
+    }
 }
 
 pub struct SharedDashCache(DashCache);
@@ -222,5 +234,9 @@ impl CacheSet<ArcTraceEntry> for SharedDashCache {
         // DO NOTHING FOR NOW.
 
         // self.0.invalidate_entries_if(entry);
+    }
+
+    fn iterate(&mut self) {
+        self.0.iterate();
     }
 }

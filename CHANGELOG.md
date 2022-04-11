@@ -1,5 +1,24 @@
 # Mokabench &mdash; Change Log
 
+## Version 0.5.0
+
+### Added
+
+- Added a CLI option `--iterate`, which enables iterator based scanning.
+    - Note: Iterator support was added at the following Moka versions:
+        - Moka v0.8.1:
+            - `dash::Cache`:
+        - Moka v0.8.2
+            - `sync::Cache`
+            - `sync::SegmentedCache`
+            - `future::Cache`
+            - `unsync::Cache`
+
+### Removed
+
+- Dropped support for Moka v0.8.1 or earlier.
+
+
 ## Version 0.4.0
 
 ### Added
@@ -8,7 +27,7 @@
 
 ### Removed
 
-- Dropped support for Moka v0.7.x.
+- Dropped support for Moka v0.7.x or earlier.
 
 
 ## Version 0.3.0
@@ -25,7 +44,7 @@
 
 ### Removed
 
-- Dropped support for Moka v0.6.x.
+- Dropped support for Moka v0.6.x or earlier.
 
 
 ## Version 0.2.0

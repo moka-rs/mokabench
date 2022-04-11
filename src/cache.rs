@@ -22,6 +22,7 @@ pub trait CacheSet<T> {
     fn invalidate(&mut self, entry: &T);
     fn invalidate_all(&mut self);
     fn invalidate_entries_if(&mut self, entry: &T);
+    fn iterate(&mut self);
 }
 
 #[async_trait]
@@ -32,6 +33,7 @@ pub trait AsyncCacheSet<T> {
     async fn invalidate(&mut self, entry: &T);
     fn invalidate_all(&mut self);
     fn invalidate_entries_if(&mut self, entry: &T);
+    async fn iterate(&mut self);
 }
 
 #[derive(Default)]

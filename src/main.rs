@@ -74,6 +74,7 @@ const OPTION_INSERTION_DELAY: &str = "insertion-delay";
 const OPTION_INVALIDATE: &str = "invalidate";
 const OPTION_INVALIDATE_ALL: &str = "invalidate-all";
 const OPTION_INVALIDATE_IF: &str = "invalidate-entries-if";
+const OPTION_ITERATE: &str = "iterate";
 const OPTION_REPEAT: &str = "repeat";
 const OPTION_SIZE_AWARE: &str = "size-aware";
 
@@ -124,6 +125,7 @@ fn create_config() -> anyhow::Result<Config> {
         .arg(Arg::new(OPTION_INVALIDATE).long(OPTION_INVALIDATE))
         .arg(Arg::new(OPTION_INVALIDATE_ALL).long(OPTION_INVALIDATE_ALL))
         .arg(Arg::new(OPTION_INVALIDATE_IF).long(OPTION_INVALIDATE_IF))
+        .arg(Arg::new(OPTION_ITERATE).long(OPTION_ITERATE))
         .arg(Arg::new(OPTION_SIZE_AWARE).long(OPTION_SIZE_AWARE))
         .get_matches();
 
@@ -175,6 +177,7 @@ fn create_config() -> anyhow::Result<Config> {
     let invalidate = matches.is_present(OPTION_INVALIDATE);
     let invalidate_all = matches.is_present(OPTION_INVALIDATE_ALL);
     let invalidate_entries_if = matches.is_present(OPTION_INVALIDATE_IF);
+    let iterate = matches.is_present(OPTION_ITERATE);
     let size_aware = matches.is_present(OPTION_SIZE_AWARE);
 
     Ok(Config::new(
@@ -188,6 +191,7 @@ fn create_config() -> anyhow::Result<Config> {
         invalidate,
         invalidate_all,
         invalidate_entries_if,
+        iterate,
         size_aware,
     ))
 }
