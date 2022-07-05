@@ -78,8 +78,11 @@ const OPTION_ITERATE: &str = "iterate";
 const OPTION_REPEAT: &str = "repeat";
 const OPTION_SIZE_AWARE: &str = "size-aware";
 
+// Since Moka v0.9.0
+const OPTION_EVICTION_LISTENER: &str = "eviction-listener";
+
 fn create_config() -> anyhow::Result<Config> {
-    let matches = Command::new("Moka Bench")
+    let mut app = Command::new("Moka Bench")
         .arg(
             Arg::new(OPTION_TRACE_FILE)
                 .short('f')
@@ -126,8 +129,13 @@ fn create_config() -> anyhow::Result<Config> {
         .arg(Arg::new(OPTION_INVALIDATE_ALL).long(OPTION_INVALIDATE_ALL))
         .arg(Arg::new(OPTION_INVALIDATE_IF).long(OPTION_INVALIDATE_IF))
         .arg(Arg::new(OPTION_ITERATE).long(OPTION_ITERATE))
-        .arg(Arg::new(OPTION_SIZE_AWARE).long(OPTION_SIZE_AWARE))
-        .get_matches();
+        .arg(Arg::new(OPTION_SIZE_AWARE).long(OPTION_SIZE_AWARE));
+
+    if cfg!(feature = "moka-v09") {
+        app = app.arg(Arg::new(OPTION_EVICTION_LISTENER).long(OPTION_EVICTION_LISTENER));
+    }
+
+    let matches = app.get_matches();
 
     let trace_file = matches.value_of(OPTION_TRACE_FILE).unwrap_or("s3");
     let trace_file = TraceFile::try_from(trace_file)?;
@@ -180,6 +188,9 @@ fn create_config() -> anyhow::Result<Config> {
     let iterate = matches.is_present(OPTION_ITERATE);
     let size_aware = matches.is_present(OPTION_SIZE_AWARE);
 
+    let eviction_listener =
+        cfg!(feature = "moka-v09") && matches.is_present(OPTION_EVICTION_LISTENER);
+
     Ok(Config::new(
         trace_file,
         ttl_secs,
@@ -192,6 +203,7 @@ fn create_config() -> anyhow::Result<Config> {
         invalidate_all,
         invalidate_entries_if,
         iterate,
+        eviction_listener,
         size_aware,
     ))
 }

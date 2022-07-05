@@ -1,3 +1,15 @@
+#[cfg(all(feature = "moka-v09", feature = "moka-v08"))]
+compile_error!(
+    "You cannot specify both `moka-v09` and `moka-v8` features at the same time.\n\
+                You might need `--no-default-features` too."
+);
+
+#[cfg(feature = "moka-v09")]
+pub(crate) use moka09 as moka;
+
+#[cfg(all(feature = "moka-v08", not(feature = "moka-v09")))]
+pub(crate) use moka08 as moka;
+
 use config::Config;
 use crossbeam_channel::Receiver;
 use itertools::Itertools;
@@ -20,6 +32,12 @@ pub use report::Report;
 pub use trace_file::TraceFile;
 
 use crate::cache::dash_cache::SharedDashCache;
+
+#[cfg(feature = "moka-v09")]
+mod eviction_counters;
+
+#[cfg(feature = "moka-v09")]
+pub(crate) use eviction_counters::EvictionCounters;
 
 pub(crate) enum Op {
     GetOrInsert(String, usize),
@@ -243,6 +261,11 @@ pub fn run_multi_threads(
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 
+    if cfg!(feature = "moka-v09") && config.eviction_listener {
+        println!("{}", EvictionCounters::csv_header());
+        println!("{}", cache_set.eviction_counters().unwrap().as_csv_line());
+    }
+
     Ok(report)
 }
 
@@ -356,6 +379,11 @@ pub fn run_multi_thread_segmented(
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 
+    if cfg!(feature = "moka-v09") && config.eviction_listener {
+        println!("{}", EvictionCounters::csv_header());
+        println!("{}", cache_set.eviction_counters().unwrap().as_csv_line());
+    }
+
     Ok(report)
 }
 
@@ -412,6 +440,11 @@ pub async fn run_multi_tasks(
     reports
         .iter()
         .for_each(|r| report.merge(r.as_ref().expect("Failed")));
+
+    if cfg!(feature = "moka-v09") && config.eviction_listener {
+        println!("{}", EvictionCounters::csv_header());
+        println!("{}", cache_set.eviction_counters().unwrap().as_csv_line());
+    }
 
     Ok(report)
 }

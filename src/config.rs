@@ -15,6 +15,7 @@ pub struct Config {
     pub invalidate_all: bool,
     pub invalidate_entries_if: bool,
     pub iterate: bool,
+    pub eviction_listener: bool,
     pub size_aware: bool,
 }
 
@@ -33,6 +34,7 @@ impl Config {
         invalidate_all: bool,
         invalidate_entries_if: bool,
         iterate: bool,
+        eviction_listener: bool,
         size_aware: bool,
     ) -> Self {
         Self {
@@ -47,6 +49,7 @@ impl Config {
             invalidate_all,
             invalidate_entries_if,
             iterate,
+            eviction_listener,
             size_aware,
         }
     }

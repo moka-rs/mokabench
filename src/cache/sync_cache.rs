@@ -1,4 +1,5 @@
 use super::{BuildFnvHasher, CacheSet, Counters, InitClosureType};
+use crate::moka::sync::Cache;
 use crate::{
     cache::{InitClosureError1, InitClosureError2},
     config::Config,
@@ -6,7 +7,9 @@ use crate::{
     report::Report,
 };
 
-use moka::sync::Cache;
+#[cfg(feature = "moka-v09")]
+use crate::EvictionCounters;
+
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -15,6 +18,8 @@ use std::sync::{
 pub struct SyncCache {
     config: Config,
     cache: Cache<usize, (u32, Arc<[u8]>), BuildFnvHasher>,
+    #[cfg(feature = "moka-v09")]
+    eviction_counters: Option<Arc<EvictionCounters>>,
 }
 
 impl Clone for SyncCache {
@@ -22,6 +27,8 @@ impl Clone for SyncCache {
         Self {
             config: self.config.clone(),
             cache: self.cache.clone(),
+            #[cfg(feature = "moka-v09")]
+            eviction_counters: self.eviction_counters.as_ref().map(Arc::clone),
         }
     }
 }
@@ -44,9 +51,46 @@ impl SyncCache {
             builder = builder.weigher(|_k, (s, _v)| *s);
         }
 
-        Self {
-            config: config.clone(),
-            cache: builder.build_with_hasher(BuildFnvHasher::default()),
+        #[cfg(feature = "moka-v09")]
+        {
+            use crate::moka::notification::{Configuration, DeliveryMode};
+
+            let eviction_counters;
+
+            if config.eviction_listener {
+                let c0 = Arc::new(EvictionCounters::default());
+                let c1 = Arc::clone(&c0);
+
+                let conf = Configuration::builder()
+                    // .delivery_mode(DeliveryMode::Queued)
+                    .delivery_mode(DeliveryMode::Immediate)
+                    .build();
+
+                builder = builder.eviction_listener_with_conf(
+                    move |_k, _v, cause| {
+                        c1.increment(cause);
+                    },
+                    conf,
+                );
+
+                eviction_counters = Some(c0);
+            } else {
+                eviction_counters = None;
+            }
+
+            Self {
+                config: config.clone(),
+                cache: builder.build_with_hasher(BuildFnvHasher::default()),
+                eviction_counters,
+            }
+        }
+
+        #[cfg(not(feature = "moka-v09"))]
+        {
+            Self {
+                config: config.clone(),
+                cache: builder.build_with_hasher(BuildFnvHasher::default()),
+            }
         }
     }
 
@@ -191,6 +235,11 @@ pub struct SharedSyncCache(SyncCache);
 impl SharedSyncCache {
     pub fn new(config: &Config, max_cap: u64, init_cap: usize) -> Self {
         Self(SyncCache::new(config, max_cap, init_cap))
+    }
+
+    #[cfg(feature = "moka-v09")]
+    pub(crate) fn eviction_counters(&self) -> Option<Arc<EvictionCounters>> {
+        self.0.eviction_counters.as_ref().map(Arc::clone)
     }
 }
 

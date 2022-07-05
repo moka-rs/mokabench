@@ -1,5 +1,14 @@
 # Mokabench &mdash; Change Log
 
+## Version 0.6.0
+
+### Added
+
+- Added crate features `moka-v09` and `moka-v08` to depend on Moka v0.9.x and v0.8.x
+  respectively. (`moka-v09` is the default)
+- Added a CLI option `--eviction-listener`, which enables the eviction listener
+  support added to Moka v0.9.x.
+
 ## Version 0.5.0
 
 ### Added
@@ -18,7 +27,6 @@
 
 - Dropped support for Moka v0.8.1 or earlier.
 
-
 ## Version 0.4.0
 
 ### Added
@@ -28,7 +36,6 @@
 ### Removed
 
 - Dropped support for Moka v0.7.x or earlier.
-
 
 ## Version 0.3.0
 
@@ -46,7 +53,6 @@
 
 - Dropped support for Moka v0.6.x or earlier.
 
-
 ## Version 0.2.0
 
 ### Fixed
@@ -63,7 +69,6 @@
 ### Changed
 
 - Switched to Rust 2021 edition.
-
 
 ## Version 0.1.0
 

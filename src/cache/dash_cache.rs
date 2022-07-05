@@ -5,8 +5,8 @@ use crate::{
     parser::ArcTraceEntry,
     report::Report,
 };
+use crate::moka::dash::Cache;
 
-use moka::dash::Cache;
 use std::sync::Arc;
 
 pub struct DashCache {

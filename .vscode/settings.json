@@ -1,4 +1,5 @@
 {
+    "editor.rulers": [85],
     "rust-analyzer.server.extraEnv": {
         "CARGO_TARGET_DIR": "target/ra"
     },
