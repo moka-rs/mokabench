@@ -50,9 +50,6 @@ pub(crate) enum Op {
 }
 
 pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
-    let f = File::open(config.trace_file.path())?;
-    let reader = BufReader::new(f);
-    let mut parser = parser::ArcTraceParser;
     let mut max_cap = capacity.try_into().unwrap();
     if config.size_aware {
         max_cap *= 2u64.pow(15);
@@ -63,25 +60,30 @@ pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
 
     let instant = Instant::now();
 
-    for line in reader.lines() {
-        let line = line?;
-        counter += 1;
-        let entry = parser.parse(&line, counter)?;
-        if config.invalidate_all && counter % 100_000 == 0 {
-            cache_set.invalidate_all();
-            cache_set.get_or_insert(&entry, &mut report);
-        } else if config.size_aware && counter % 11 == 0 {
-            cache_set.update(&entry, &mut report);
-        } else if config.invalidate && counter % 8 == 0 {
-            cache_set.invalidate(&entry);
-        } else if config.insert_once && counter % 3 == 0 {
-            cache_set.get_or_insert_once(&entry, &mut report);
-        } else {
-            cache_set.get_or_insert(&entry, &mut report);
-        }
+    for _ in 0..(config.repeat.unwrap_or(1)) {
+        let f = File::open(config.trace_file.path())?;
+        let reader = BufReader::new(f);
+        let mut parser = parser::ArcTraceParser;
+        for line in reader.lines() {
+            let line = line?;
+            counter += 1;
+            let entry = parser.parse(&line, counter)?;
+            if config.invalidate_all && counter % 100_000 == 0 {
+                cache_set.invalidate_all();
+                cache_set.get_or_insert(&entry, &mut report);
+            } else if config.size_aware && counter % 11 == 0 {
+                cache_set.update(&entry, &mut report);
+            } else if config.invalidate && counter % 8 == 0 {
+                cache_set.invalidate(&entry);
+            } else if config.insert_once && counter % 3 == 0 {
+                cache_set.get_or_insert_once(&entry, &mut report);
+            } else {
+                cache_set.get_or_insert(&entry, &mut report);
+            }
 
-        if config.iterate && counter % 50_000 == 0 {
-            cache_set.iterate();
+            if config.iterate && counter % 50_000 == 0 {
+                cache_set.iterate();
+            }
         }
     }
 
@@ -214,8 +216,6 @@ pub fn run_multi_threads(
     capacity: usize,
     num_clients: u16,
 ) -> anyhow::Result<Report> {
-    let f = File::open(config.trace_file.path())?;
-    let reader = BufReader::new(f);
     let mut max_cap = capacity.try_into().unwrap();
     if config.size_aware {
         max_cap *= 2u64.pow(15);
@@ -241,9 +241,14 @@ pub fn run_multi_threads(
 
     let mut counter = 0;
     let instant = Instant::now();
-    for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-        let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
-        send.send(commands)?;
+
+    for _ in 0..(config.repeat.unwrap_or(1)) {
+        let f = File::open(config.trace_file.path())?;
+        let reader = BufReader::new(f);
+        for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
+            let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
+            send.send(commands)?;
+        }
     }
 
     // Drop the sender channel to notify the workers that we are finished.
@@ -275,8 +280,6 @@ pub fn run_multi_threads_dash_cache(
     capacity: usize,
     num_clients: u16,
 ) -> anyhow::Result<Report> {
-    let f = File::open(config.trace_file.path())?;
-    let reader = BufReader::new(f);
     let mut max_cap = capacity.try_into().unwrap();
     if config.size_aware {
         max_cap *= 2u64.pow(15);
@@ -302,9 +305,14 @@ pub fn run_multi_threads_dash_cache(
 
     let mut counter = 0;
     let instant = Instant::now();
-    for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-        let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
-        send.send(commands)?;
+
+    for _ in 0..(config.repeat.unwrap_or(1)) {
+        let f = File::open(config.trace_file.path())?;
+        let reader = BufReader::new(f);
+        for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
+            let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
+            send.send(commands)?;
+        }
     }
 
     // Drop the sender channel to notify the workers that we are finished.
@@ -332,8 +340,6 @@ pub fn run_multi_thread_segmented(
     num_clients: u16,
     num_segments: usize,
 ) -> anyhow::Result<Report> {
-    let f = File::open(config.trace_file.path())?;
-    let reader = BufReader::new(f);
     let mut max_cap = capacity.try_into().unwrap();
     if config.size_aware {
         max_cap *= 2u64.pow(15);
@@ -359,9 +365,14 @@ pub fn run_multi_thread_segmented(
 
     let mut counter = 0;
     let instant = Instant::now();
-    for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-        let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
-        send.send(commands)?;
+
+    for _ in 0..(config.repeat.unwrap_or(1)) {
+        let f = File::open(config.trace_file.path())?;
+        let reader = BufReader::new(f);
+        for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
+            let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
+            send.send(commands)?;
+        }
     }
 
     // Drop the sender channel to notify the workers that we are finished.

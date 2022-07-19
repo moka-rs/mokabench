@@ -31,8 +31,10 @@ tokio = { version = "1.17.0", features = ["rt-multi-thread", "macros" ] }
 [dependencies.moka09]
 package = "moka"
 optional = true
+# version = "0.9.1"
 git = "https://github.com/moka-rs/moka"
 branch = "master"
+# path = "../moka-epoch09"
 features = ["future", "dash"]
 
 [dependencies.moka08]

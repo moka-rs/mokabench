@@ -1,11 +1,11 @@
 use super::{BuildFnvHasher, CacheSet, Counters /* InitClosureType */};
+use crate::moka::dash::Cache;
 use crate::{
     // cache::{InitClosureError1, InitClosureError2},
     config::Config,
     parser::ArcTraceEntry,
     report::Report,
 };
-use crate::moka::dash::Cache;
 
 use std::sync::Arc;
 

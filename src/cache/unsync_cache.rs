@@ -1,6 +1,6 @@
 use super::{BuildFnvHasher, CacheSet, Counters};
-use crate::{config::Config, parser::ArcTraceEntry, report::Report};
 use crate::moka::unsync::{Cache, CacheBuilder};
+use crate::{config::Config, parser::ArcTraceEntry, report::Report};
 
 use std::sync::Arc;
 
