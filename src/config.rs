@@ -15,7 +15,7 @@ pub struct Config {
     pub invalidate_all: bool,
     pub invalidate_entries_if: bool,
     pub iterate: bool,
-    pub eviction_listener: bool,
+    pub eviction_listener: RemovalNotificationMode,
     pub size_aware: bool,
 }
 
@@ -34,7 +34,7 @@ impl Config {
         invalidate_all: bool,
         invalidate_entries_if: bool,
         iterate: bool,
-        eviction_listener: bool,
+        eviction_listener: RemovalNotificationMode,
         size_aware: bool,
     ) -> Self {
         Self {
@@ -53,4 +53,15 @@ impl Config {
             size_aware,
         }
     }
+
+    pub fn is_eviction_listener_enabled(&self) -> bool {
+        self.eviction_listener != RemovalNotificationMode::None
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RemovalNotificationMode {
+    None,
+    Immediate,
+    Queued,
 }

@@ -266,9 +266,8 @@ pub fn run_multi_threads(
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 
-    if cfg!(feature = "moka-v09") && config.eviction_listener {
-        println!("{}", EvictionCounters::csv_header());
-        println!("{}", cache_set.eviction_counters().unwrap().as_csv_line());
+    if cfg!(feature = "moka-v09") && config.is_eviction_listener_enabled() {
+        report.add_eviction_counts(cache_set.eviction_counters().as_ref().unwrap());
     }
 
     Ok(report)
@@ -390,9 +389,8 @@ pub fn run_multi_thread_segmented(
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 
-    if cfg!(feature = "moka-v09") && config.eviction_listener {
-        println!("{}", EvictionCounters::csv_header());
-        println!("{}", cache_set.eviction_counters().unwrap().as_csv_line());
+    if cfg!(feature = "moka-v09") && config.is_eviction_listener_enabled() {
+        report.add_eviction_counts(cache_set.eviction_counters().as_ref().unwrap());
     }
 
     Ok(report)
@@ -452,9 +450,8 @@ pub async fn run_multi_tasks(
         .iter()
         .for_each(|r| report.merge(r.as_ref().expect("Failed")));
 
-    if cfg!(feature = "moka-v09") && config.eviction_listener {
-        println!("{}", EvictionCounters::csv_header());
-        println!("{}", cache_set.eviction_counters().unwrap().as_csv_line());
+    if cfg!(feature = "moka-v09") && config.is_eviction_listener_enabled() {
+        report.add_eviction_counts(cache_set.eviction_counters().as_ref().unwrap());
     }
 
     Ok(report)

@@ -1,4 +1,5 @@
 use super::{BuildFnvHasher, CacheSet, Counters, InitClosureType};
+use crate::config::RemovalNotificationMode;
 use crate::moka::sync::Cache;
 use crate::{
     cache::{InitClosureError1, InitClosureError2},
@@ -57,14 +58,17 @@ impl SyncCache {
 
             let eviction_counters;
 
-            if config.eviction_listener {
+            if config.is_eviction_listener_enabled() {
                 let c0 = Arc::new(EvictionCounters::default());
                 let c1 = Arc::clone(&c0);
 
-                let conf = Configuration::builder()
-                    // .delivery_mode(DeliveryMode::Queued)
-                    .delivery_mode(DeliveryMode::Immediate)
-                    .build();
+                let mode = match config.eviction_listener {
+                    RemovalNotificationMode::Immediate => DeliveryMode::Immediate,
+                    RemovalNotificationMode::Queued => DeliveryMode::Queued,
+                    RemovalNotificationMode::None => unreachable!(),
+                };
+
+                let conf = Configuration::builder().delivery_mode(mode).build();
 
                 builder = builder.eviction_listener_with_conf(
                     move |_k, _v, cause| {

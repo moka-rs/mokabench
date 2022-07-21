@@ -32,21 +32,21 @@ impl EvictionCounters {
         self.explicit.load(Ordering::Acquire)
     }
 
-    pub(crate) fn replaced(&self) -> u64 {
-        self.replaced.load(Ordering::Acquire)
-    }
+    // pub(crate) fn replaced(&self) -> u64 {
+    //     self.replaced.load(Ordering::Acquire)
+    // }
 
-    pub(crate) fn csv_header() -> &'static str {
-        "Size, Expired, Explicit, Replaced"
-    }
+    // pub(crate) fn csv_header() -> &'static str {
+    //     "Size, Expired, Explicit, Replaced"
+    // }
 
-    pub(crate) fn as_csv_line(&self) -> String {
-        format!(
-            "{}, {}, {}, {}",
-            self.size(),
-            self.expired(),
-            self.explicit(),
-            self.replaced()
-        )
-    }
+    // pub(crate) fn as_csv_line(&self) -> String {
+    //     format!(
+    //         "{}, {}, {}, {}",
+    //         self.size(),
+    //         self.expired(),
+    //         self.explicit(),
+    //         self.replaced()
+    //     )
+    // }
 }

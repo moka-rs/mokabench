@@ -38,9 +38,9 @@ pub trait AsyncCacheSet<T> {
 
 #[derive(Default)]
 pub(crate) struct Counters {
-    insert_count: usize,
-    read_count: usize,
-    hit_count: usize,
+    insert_count: u64,
+    read_count: u64,
+    hit_count: u64,
 }
 
 impl Counters {

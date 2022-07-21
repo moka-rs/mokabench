@@ -1,5 +1,9 @@
 use anyhow::Context;
-use mokabench::{self, config::Config, Report, TraceFile};
+use mokabench::{
+    self,
+    config::{Config, RemovalNotificationMode},
+    Report, TraceFile,
+};
 
 use clap::{Arg, Command};
 
@@ -9,7 +13,18 @@ async fn main() -> anyhow::Result<()> {
     println!("{:?}", config);
     println!();
 
-    println!("{}", Report::cvs_header());
+    if config.eviction_listener == RemovalNotificationMode::Immediate {
+        eprintln!(
+            "WARNING: eviction_listener = \"immediate\" is not supported by \
+                  the async cache. \"queued\" mode will be used for it."
+        );
+        eprintln!();
+    }
+
+    println!(
+        "{}",
+        Report::cvs_header(config.is_eviction_listener_enabled())
+    );
 
     for capacity in config.trace_file.default_capacities() {
         run_with_capacity(&config, *capacity).await?
@@ -28,7 +43,7 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
         NUM_CLIENTS_ARRAY
     };
 
-    if !config.insert_once {
+    if !config.insert_once && !config.is_eviction_listener_enabled() {
         let report = mokabench::run_single(config, capacity)?;
         println!("{}", report.to_csv_record());
     }
@@ -47,7 +62,10 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
         println!("{}", report.to_csv_record());
     }
 
-    if !config.insert_once && !config.invalidate_entries_if {
+    if !config.insert_once
+        && !config.invalidate_entries_if
+        && !config.is_eviction_listener_enabled()
+    {
         for num_clients in num_clients_slice {
             let report = mokabench::run_multi_threads_dash_cache(config, capacity, *num_clients)?;
             println!("{}", report.to_csv_record());
@@ -132,7 +150,12 @@ fn create_config() -> anyhow::Result<Config> {
         .arg(Arg::new(OPTION_SIZE_AWARE).long(OPTION_SIZE_AWARE));
 
     if cfg!(feature = "moka-v09") {
-        app = app.arg(Arg::new(OPTION_EVICTION_LISTENER).long(OPTION_EVICTION_LISTENER));
+        app = app.arg(
+            Arg::new(OPTION_EVICTION_LISTENER)
+                .long(OPTION_EVICTION_LISTENER)
+                .takes_value(true)
+                .use_value_delimiter(false),
+        );
     }
 
     let matches = app.get_matches();
@@ -188,8 +211,24 @@ fn create_config() -> anyhow::Result<Config> {
     let iterate = matches.is_present(OPTION_ITERATE);
     let size_aware = matches.is_present(OPTION_SIZE_AWARE);
 
-    let eviction_listener =
-        cfg!(feature = "moka-v09") && matches.is_present(OPTION_EVICTION_LISTENER);
+    let eviction_listener = if cfg!(feature = "moka-v09") {
+        if let Some(v) = matches.value_of(OPTION_EVICTION_LISTENER) {
+            match v {
+                "immediate" => RemovalNotificationMode::Immediate,
+                "queued" => RemovalNotificationMode::Queued,
+                _ => {
+                    anyhow::bail!(
+                        r#"eviction-listener must be "immediate" or "queued", but got "{}""#,
+                        v
+                    );
+                }
+            }
+        } else {
+            RemovalNotificationMode::None
+        }
+    } else {
+        RemovalNotificationMode::None
+    };
 
     Ok(Config::new(
         trace_file,

@@ -51,7 +51,7 @@ impl AsyncCache {
         {
             let eviction_counters;
 
-            if config.eviction_listener {
+            if config.is_eviction_listener_enabled() {
                 let c0 = Arc::new(EvictionCounters::default());
                 let c1 = Arc::clone(&c0);
 
