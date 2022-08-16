@@ -1,6 +1,6 @@
-use super::{AsyncCacheSet, BuildFnvHasher, Counters, InitClosureError1, InitClosureType};
+use super::{AsyncCacheSet, Counters, DefaultHasher, InitClosureError1, InitClosureType};
 use crate::moka::future::Cache;
-use crate::{cache::InitClosureError2, config::Config, parser::ArcTraceEntry, report::Report};
+use crate::{cache::InitClosureError2, config::Config, parser::TraceEntry, report::Report};
 
 #[cfg(feature = "moka-v09")]
 use crate::EvictionCounters;
@@ -13,7 +13,7 @@ use std::sync::{
 
 pub struct AsyncCache {
     config: Config,
-    cache: Cache<usize, (u32, Arc<[u8]>), BuildFnvHasher>,
+    cache: Cache<usize, (u32, Arc<[u8]>), DefaultHasher>,
     #[cfg(feature = "moka-v09")]
     eviction_counters: Option<Arc<EvictionCounters>>,
 }
@@ -67,7 +67,7 @@ impl AsyncCache {
 
             Self {
                 config: config.clone(),
-                cache: builder.build_with_hasher(BuildFnvHasher::default()),
+                cache: builder.build_with_hasher(DefaultHasher::default()),
                 eviction_counters,
             }
         }
@@ -76,7 +76,7 @@ impl AsyncCache {
         {
             Self {
                 config: config.clone(),
-                cache: builder.build_with_hasher(BuildFnvHasher::default()),
+                cache: builder.build_with_hasher(DefaultHasher::default()),
             }
         }
     }
@@ -133,8 +133,8 @@ impl AsyncCache {
 }
 
 #[async_trait]
-impl AsyncCacheSet<ArcTraceEntry> for AsyncCache {
-    async fn get_or_insert(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+impl AsyncCacheSet<TraceEntry> for AsyncCache {
+    async fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
 
@@ -152,7 +152,7 @@ impl AsyncCacheSet<ArcTraceEntry> for AsyncCache {
         counters.add_to_report(report);
     }
 
-    async fn get_or_insert_once(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+    async fn get_or_insert_once(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
         let is_inserted = Arc::new(AtomicBool::default());
@@ -181,7 +181,7 @@ impl AsyncCacheSet<ArcTraceEntry> for AsyncCache {
         counters.add_to_report(report);
     }
 
-    async fn update(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+    async fn update(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
 
@@ -194,7 +194,7 @@ impl AsyncCacheSet<ArcTraceEntry> for AsyncCache {
         counters.add_to_report(report);
     }
 
-    async fn invalidate(&mut self, entry: &ArcTraceEntry) {
+    async fn invalidate(&mut self, entry: &TraceEntry) {
         for block in entry.range() {
             self.cache.invalidate(&block).await;
         }
@@ -204,7 +204,7 @@ impl AsyncCacheSet<ArcTraceEntry> for AsyncCache {
         self.cache.invalidate_all();
     }
 
-    fn invalidate_entries_if(&mut self, entry: &ArcTraceEntry) {
+    fn invalidate_entries_if(&mut self, entry: &TraceEntry) {
         for block in entry.range() {
             self.cache
                 .invalidate_entries_if(move |_k, (_s, v)| v[0] == (block % 256) as u8)
@@ -244,20 +244,20 @@ impl Clone for SharedAsyncCache {
 }
 
 #[async_trait]
-impl AsyncCacheSet<ArcTraceEntry> for SharedAsyncCache {
-    async fn get_or_insert(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+impl AsyncCacheSet<TraceEntry> for SharedAsyncCache {
+    async fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
         self.0.get_or_insert(entry, report).await
     }
 
-    async fn get_or_insert_once(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+    async fn get_or_insert_once(&mut self, entry: &TraceEntry, report: &mut Report) {
         self.0.get_or_insert_once(entry, report).await
     }
 
-    async fn update(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+    async fn update(&mut self, entry: &TraceEntry, report: &mut Report) {
         self.0.update(entry, report).await;
     }
 
-    async fn invalidate(&mut self, entry: &ArcTraceEntry) {
+    async fn invalidate(&mut self, entry: &TraceEntry) {
         self.0.invalidate(entry).await;
     }
 
@@ -265,7 +265,7 @@ impl AsyncCacheSet<ArcTraceEntry> for SharedAsyncCache {
         self.0.invalidate_all();
     }
 
-    fn invalidate_entries_if(&mut self, entry: &ArcTraceEntry) {
+    fn invalidate_entries_if(&mut self, entry: &TraceEntry) {
         self.0.invalidate_entries_if(entry);
     }
 

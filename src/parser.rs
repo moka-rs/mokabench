@@ -1,16 +1,14 @@
 pub trait TraceParser<T> {
-    fn parse(&mut self, line: &str, line_number: usize) -> anyhow::Result<T>;
+    fn parse(&mut self, line: &str, line_number: usize) -> anyhow::Result<Option<T>>;
 }
 
-// pub trait TraceEntry {}
-
 #[derive(Debug)]
-pub struct ArcTraceEntry {
+pub struct TraceEntry {
     range: std::ops::Range<usize>,
     line_number: usize,
 }
 
-impl ArcTraceEntry {
+impl TraceEntry {
     pub fn range(&self) -> std::ops::Range<usize> {
         self.range.clone()
     }
@@ -20,19 +18,32 @@ impl ArcTraceEntry {
     }
 }
 
-pub struct ArcTraceParser;
+// Arc traces contains a 2+ numbers per line, the first two being start and len, meaning a range `start..start+len`
+// LIRS/LIRS2 traces contains a single key per line
+pub struct GenericTraceParser;
 
-impl TraceParser<ArcTraceEntry> for ArcTraceParser {
-    fn parse(&mut self, line: &str, line_number: usize) -> anyhow::Result<ArcTraceEntry> {
-        let tokens = line.split(|c| c == ' ').take(2).collect::<Vec<_>>();
-        if tokens.len() < 2 {
-            anyhow::bail!("Wrong number of elements: {}", tokens.len());
+impl TraceParser<TraceEntry> for GenericTraceParser {
+    fn parse(&mut self, line: &str, line_number: usize) -> anyhow::Result<Option<TraceEntry>> {
+        if line == "*" {
+            // LIRS/LIRS2 traces contains `*` lines which are NOOPs
+            return Ok(None);
         }
-        let start = tokens[0].parse::<usize>()?;
-        let len = tokens[1].parse::<usize>()?;
-        Ok(ArcTraceEntry {
+        let mut tokens = line.split(' ');
+        let start = if let Some(token) = tokens.next() {
+            token.parse::<usize>()?
+        } else {
+            anyhow::bail!("Expected at least one integer in the line: {}", line);
+        };
+        let len = if let Some(token) = tokens.next() {
+            token.parse::<usize>()?
+        } else {
+            // single integer per line format
+            1
+        };
+
+        Ok(Some(TraceEntry {
             range: start..(start + len),
             line_number,
-        })
+        }))
     }
 }

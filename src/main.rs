@@ -9,43 +9,75 @@ use clap::{Arg, Command};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let config = create_config()?;
-    println!("{:?}", config);
-    println!();
+    let (trace_files, mut config) = create_config()?;
+    for trace_file in trace_files {
+        config.trace_file = trace_file;
+        println!("{:?}", config);
+        println!();
 
-    if config.eviction_listener == RemovalNotificationMode::Immediate {
-        eprintln!(
-            "WARNING: eviction_listener = \"immediate\" is not supported by \
-                  the async cache. \"queued\" mode will be used for it."
+        println!(
+            "{}",
+            Report::cvs_header(config.is_eviction_listener_enabled())
         );
-        eprintln!();
-    }
 
-    println!(
-        "{}",
-        Report::cvs_header(config.is_eviction_listener_enabled())
-    );
-
-    for capacity in config.trace_file.default_capacities() {
-        run_with_capacity(&config, *capacity).await?
+        for capacity in config.trace_file.default_capacities() {
+            run_with_capacity(&config, *capacity).await?
+        }
     }
 
     Ok(())
 }
 
 async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<()> {
-    const NUM_CLIENTS_ARRAY: &[u16] = &[16, 24, 32, 40, 48];
+    const DEFAULT_NUM_CLIENTS_ARRAY: &[u16] = &[16, 24, 32, 40, 48];
 
-    let num_clients_opt = config.num_clients.map(|n| [n; 1]);
-    let num_clients_slice: &[u16] = if let Some(n) = &num_clients_opt {
-        n
+    let num_clients_slice: &[u16] = if let Some(n) = &config.num_clients {
+        &n
     } else {
-        NUM_CLIENTS_ARRAY
+        DEFAULT_NUM_CLIENTS_ARRAY
     };
 
+    // Note that timing results for the unsync cache are not comparable with the rest
+    // as it doesn't use the producer/consumer thread pattern as the other caches.
     if !config.insert_once && !config.is_eviction_listener_enabled() {
         let report = mokabench::run_single(config, capacity)?;
         println!("{}", report.to_csv_record());
+    }
+
+    #[cfg(feature = "hashlink")]
+    if !config.insert_once
+        && !config.size_aware
+        && !config.invalidate_entries_if
+        && !config.is_eviction_listener_enabled()
+    {
+        for num_clients in num_clients_slice {
+            let report = mokabench::run_multi_threads_hashlink(config, capacity, *num_clients)?;
+            println!("{}", report.to_csv_record());
+        }
+    }
+
+    #[cfg(feature = "quick_cache")]
+    if !config.insert_once
+        && !config.size_aware
+        && !config.invalidate_entries_if
+        && !config.is_eviction_listener_enabled()
+    {
+        for num_clients in num_clients_slice {
+            let report = mokabench::run_multi_threads_quick_cache(config, capacity, *num_clients)?;
+            println!("{}", report.to_csv_record());
+        }
+    }
+
+    #[cfg(feature = "stretto")]
+    if !config.insert_once
+        && !config.size_aware
+        && !config.invalidate_entries_if
+        && !config.is_eviction_listener_enabled()
+    {
+        for num_clients in num_clients_slice {
+            let report = mokabench::run_multi_threads_stretto(config, capacity, *num_clients)?;
+            println!("{}", report.to_csv_record());
+        }
     }
 
     if capacity >= 2_000_000 {
@@ -58,6 +90,12 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
     }
 
     for num_clients in num_clients_slice {
+        if config.eviction_listener == RemovalNotificationMode::Immediate {
+            eprintln!(
+                "WARNING: eviction_listener = \"immediate\" is not supported by \
+                    the async cache. \"queued\" mode will be used for it."
+            );
+        }
         let report = mokabench::run_multi_tasks(config, capacity, *num_clients).await?;
         println!("{}", report.to_csv_record());
     }
@@ -84,6 +122,7 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
 }
 
 const OPTION_TRACE_FILE: &str = "trace-file";
+const OPTION_TRACE_FILES: &str = "trace-files";
 const OPTION_TTL: &str = "ttl";
 const OPTION_TTI: &str = "tti";
 const OPTION_NUM_CLIENTS: &str = "num-clients";
@@ -99,15 +138,19 @@ const OPTION_SIZE_AWARE: &str = "size-aware";
 // Since Moka v0.9.0
 const OPTION_EVICTION_LISTENER: &str = "eviction-listener";
 
-fn create_config() -> anyhow::Result<Config> {
+fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
     let mut app = Command::new("Moka Bench")
         .arg(
             Arg::new(OPTION_TRACE_FILE)
+                .alias(OPTION_TRACE_FILES)
                 .short('f')
                 .long(OPTION_TRACE_FILE)
-                .help("The trace file (s3, ds1 or oltp). default: s3")
+                .help("The trace file (e.g. s3, ds1, oltp). default: s3")
+                .default_value("s3")
+                .default_missing_value("s3")
                 .takes_value(true)
-                .use_value_delimiter(false),
+                .multiple_values(true)
+                .use_value_delimiter(true),
         )
         .arg(
             Arg::new(OPTION_TTL)
@@ -126,21 +169,20 @@ fn create_config() -> anyhow::Result<Config> {
                 .short('n')
                 .long(OPTION_NUM_CLIENTS)
                 .takes_value(true)
-                .use_value_delimiter(false),
+                .multiple_values(true)
+                .use_value_delimiter(true),
         )
         .arg(
             Arg::new(OPTION_REPEAT)
                 .short('r')
                 .long(OPTION_REPEAT)
-                .takes_value(true)
-                .use_value_delimiter(false),
+                .takes_value(true),
         )
         .arg(
             Arg::new(OPTION_INSERTION_DELAY)
                 .short('d')
                 .long(OPTION_INSERTION_DELAY)
-                .takes_value(true)
-                .use_value_delimiter(false),
+                .takes_value(true),
         )
         .arg(Arg::new(OPTION_INSERT_ONCE).long(OPTION_INSERT_ONCE))
         .arg(Arg::new(OPTION_INVALIDATE).long(OPTION_INVALIDATE))
@@ -160,8 +202,11 @@ fn create_config() -> anyhow::Result<Config> {
 
     let matches = app.get_matches();
 
-    let trace_file = matches.value_of(OPTION_TRACE_FILE).unwrap_or("s3");
-    let trace_file = TraceFile::try_from(trace_file)?;
+    let trace_files = matches
+        .values_of(OPTION_TRACE_FILE)
+        .unwrap()
+        .map(|t| TraceFile::try_from(t))
+        .collect::<Result<Vec<TraceFile>, _>>()?;
 
     let ttl_secs = match matches.value_of(OPTION_TTL) {
         None => None,
@@ -179,11 +224,16 @@ fn create_config() -> anyhow::Result<Config> {
         ),
     };
 
-    let num_clients = match matches.value_of(OPTION_NUM_CLIENTS) {
+    let num_clients = match matches.values_of(OPTION_NUM_CLIENTS) {
         None => None,
-        Some(v) => Some(v.parse().with_context(|| {
-            format!(r#"Cannot parse num_client "{}" as a positive integer"#, v)
-        })?),
+        Some(v) => Some(
+            v.map(|v| {
+                v.parse().with_context(|| {
+                    format!(r#"Cannot parse num_client "{}" as a positive integer"#, v)
+                })
+            })
+            .collect::<Result<Vec<u16>, _>>()?,
+        ),
     };
 
     let repeat = match matches.value_of(OPTION_REPEAT) {
@@ -230,8 +280,8 @@ fn create_config() -> anyhow::Result<Config> {
         RemovalNotificationMode::None
     };
 
-    Ok(Config::new(
-        trace_file,
+    let config = Config::new(
+        trace_files[0],
         ttl_secs,
         tti_secs,
         num_clients,
@@ -244,5 +294,6 @@ fn create_config() -> anyhow::Result<Config> {
         iterate,
         eviction_listener,
         size_aware,
-    ))
+    );
+    Ok((trace_files, config))
 }

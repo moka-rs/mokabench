@@ -1,9 +1,9 @@
-use super::{BuildFnvHasher, CacheSet, Counters /* InitClosureType */};
-use crate::moka::dash::Cache;
+use super::{CacheSet, Counters /* InitClosureType */, DefaultHasher};
 use crate::{
     // cache::{InitClosureError1, InitClosureError2},
     config::Config,
-    parser::ArcTraceEntry,
+    moka::dash::Cache,
+    parser::TraceEntry,
     report::Report,
 };
 
@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 pub struct DashCache {
     config: Config,
-    cache: Cache<usize, (u32, Arc<[u8]>), BuildFnvHasher>,
+    cache: Cache<usize, (u32, Arc<[u8]>), DefaultHasher>,
 }
 
 impl Clone for DashCache {
@@ -43,7 +43,7 @@ impl DashCache {
 
         Self {
             config: config.clone(),
-            cache: builder.build_with_hasher(BuildFnvHasher::default()),
+            cache: builder.build_with_hasher(DefaultHasher::default()),
         }
     }
 
@@ -94,8 +94,8 @@ impl DashCache {
     // }
 }
 
-impl CacheSet<ArcTraceEntry> for DashCache {
-    fn get_or_insert(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+impl CacheSet<TraceEntry> for DashCache {
+    fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
 
@@ -113,11 +113,11 @@ impl CacheSet<ArcTraceEntry> for DashCache {
         counters.add_to_report(report);
     }
 
-    fn get_or_insert_once(&mut self, _entry: &ArcTraceEntry, _report: &mut Report) {
+    fn get_or_insert_once(&mut self, _entry: &TraceEntry, _report: &mut Report) {
         unimplemented!();
     }
 
-    // fn get_or_insert_once(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+    // fn get_or_insert_once(&mut self, entry: &TraceEntry, report: &mut Report) {
     //     let mut counters = Counters::default();
     //     let mut req_id = entry.line_number();
     //     let is_inserted = Arc::new(AtomicBool::default());
@@ -146,7 +146,7 @@ impl CacheSet<ArcTraceEntry> for DashCache {
     //     counters.add_to_report(report);
     // }
 
-    fn update(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+    fn update(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
 
@@ -159,7 +159,7 @@ impl CacheSet<ArcTraceEntry> for DashCache {
         counters.add_to_report(report);
     }
 
-    fn invalidate(&mut self, entry: &ArcTraceEntry) {
+    fn invalidate(&mut self, entry: &TraceEntry) {
         for block in entry.range() {
             self.cache.invalidate(&block);
         }
@@ -169,11 +169,11 @@ impl CacheSet<ArcTraceEntry> for DashCache {
         self.cache.invalidate_all();
     }
 
-    fn invalidate_entries_if(&mut self, _entry: &ArcTraceEntry) {
+    fn invalidate_entries_if(&mut self, _entry: &TraceEntry) {
         unimplemented!();
     }
 
-    // fn invalidate_entries_if(&mut self, entry: &ArcTraceEntry) {
+    // fn invalidate_entries_if(&mut self, entry: &TraceEntry) {
     //     for block in entry.range() {
     //         self.cache
     //             .invalidate_entries_if(move |_k, (_s, v)| v[0] == (block % 256) as u8)
@@ -208,21 +208,21 @@ impl Clone for SharedDashCache {
     }
 }
 
-impl CacheSet<ArcTraceEntry> for SharedDashCache {
-    fn get_or_insert(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+impl CacheSet<TraceEntry> for SharedDashCache {
+    fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
         self.0.get_or_insert(entry, report);
     }
 
-    fn get_or_insert_once(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+    fn get_or_insert_once(&mut self, entry: &TraceEntry, report: &mut Report) {
         // self.0.get_or_insert_once(entry, report);
         self.0.get_or_insert(entry, report);
     }
 
-    fn update(&mut self, entry: &ArcTraceEntry, report: &mut Report) {
+    fn update(&mut self, entry: &TraceEntry, report: &mut Report) {
         self.0.update(entry, report);
     }
 
-    fn invalidate(&mut self, entry: &ArcTraceEntry) {
+    fn invalidate(&mut self, entry: &TraceEntry) {
         self.0.invalidate(entry);
     }
 
@@ -230,7 +230,7 @@ impl CacheSet<ArcTraceEntry> for SharedDashCache {
         self.0.invalidate_all();
     }
 
-    fn invalidate_entries_if(&mut self, _entry: &ArcTraceEntry) {
+    fn invalidate_entries_if(&mut self, _entry: &TraceEntry) {
         // DO NOTHING FOR NOW.
 
         // self.0.invalidate_entries_if(entry);
