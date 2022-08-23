@@ -10,6 +10,9 @@ default = ["moka-v09"]
 
 moka-v09 = ["moka09"]
 moka-v08 = ["moka08"]
+hashlink = ["dep:hashlink"]
+quick_cache = ["dep:quick_cache"]
+stretto = ["dep:stretto"]
 
 [dependencies]
 anyhow = "1.0.56"
@@ -17,11 +20,15 @@ async-io = "1.6.0"
 async-trait = "0.1.53"
 clap = "3.1.8"
 crossbeam-channel = "0.5.5"
-fnv = "1.0.7"
 futures-util = "0.3.2"
 itertools = "0.10.3"
 parking_lot = "0.12.0"
 thiserror = "1.0.30"
+xxhash-rust = { version = "0.8.5", features = ["xxh3"] }
+
+hashlink = { optional = true, version = "0.8" }
+quick_cache = { optional = true, version = "0.1" }
+stretto = { optional = true, version = "0.6" }
 
 # actix-rt = "2"
 # actix-rt = "1"
@@ -42,3 +49,8 @@ package = "moka"
 optional = true
 version = "0.8.6"
 features = ["future", "dash"]
+
+[profile.release]
+debug=true
+# debug-assertions=true
+# overflow-checks = true

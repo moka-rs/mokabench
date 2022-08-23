@@ -1,52 +1,49 @@
 use super::{CacheSet, Counters, DefaultHasher};
-use crate::moka::unsync::{Cache, CacheBuilder};
 use crate::{config::Config, parser::TraceEntry, report::Report};
 
 use std::sync::Arc;
 
-pub struct UnsyncCache {
+#[derive(Clone)]
+pub struct QuickCache {
     config: Config,
-    cache: Cache<usize, (u32, Arc<[u8]>), DefaultHasher>,
+    cache: Arc<::quick_cache::sync::Cache<usize, (u32, Arc<[u8]>), DefaultHasher>>,
 }
 
-impl UnsyncCache {
-    pub fn new(config: &Config, max_cap: u64, init_cap: usize) -> Self {
-        let mut builder = CacheBuilder::new(max_cap).initial_capacity(init_cap);
-        if let Some(ttl) = config.ttl {
-            builder = builder.time_to_live(ttl);
+impl QuickCache {
+    pub fn new(config: &Config, capacity: usize) -> Self {
+        if let Some(_ttl) = config.ttl {
+            todo!()
         }
-        if let Some(tti) = config.tti {
-            builder = builder.time_to_idle(tti)
+        if let Some(_tti) = config.tti {
+            todo!()
         }
         if config.size_aware {
-            builder = builder.weigher(|_k, (s, _v)| *s);
+            todo!()
         }
 
         Self {
             config: config.clone(),
-            cache: builder.build_with_hasher(DefaultHasher::default()),
+            cache: ::quick_cache::sync::Cache::with_hasher(
+                capacity,
+                capacity,
+                DefaultHasher::default(),
+            )
+            .into(),
         }
     }
 
-    fn get(&mut self, key: &usize) -> bool {
+    fn get(&self, key: &usize) -> bool {
         self.cache.get(key).is_some()
     }
 
-    fn insert(&mut self, key: usize, req_id: usize) {
+    fn insert(&self, key: usize, req_id: usize) {
         let value = super::make_value(&self.config, key, req_id);
         super::sleep_thread_for_insertion(&self.config);
         self.cache.insert(key, value);
     }
-
-    fn invalidate_entries_if(&mut self, entry: &TraceEntry) {
-        for block in entry.range() {
-            self.cache
-                .invalidate_entries_if(move |_k, (_s, v)| v[0] == (block % 256) as u8)
-        }
-    }
 }
 
-impl CacheSet<TraceEntry> for UnsyncCache {
+impl CacheSet<TraceEntry> for QuickCache {
     fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
@@ -65,8 +62,8 @@ impl CacheSet<TraceEntry> for UnsyncCache {
         counters.add_to_report(report);
     }
 
-    fn get_or_insert_once(&mut self, entry: &TraceEntry, report: &mut Report) {
-        self.get_or_insert(entry, report);
+    fn get_or_insert_once(&mut self, _entry: &TraceEntry, _report: &mut Report) {
+        unimplemented!();
     }
 
     fn update(&mut self, entry: &TraceEntry, report: &mut Report) {
@@ -82,21 +79,19 @@ impl CacheSet<TraceEntry> for UnsyncCache {
         counters.add_to_report(report);
     }
 
-    fn invalidate(&mut self, entry: &TraceEntry) {
-        for block in entry.range() {
-            self.cache.invalidate(&block);
-        }
+    fn invalidate(&mut self, _entry: &TraceEntry) {
+        unimplemented!();
     }
 
     fn invalidate_all(&mut self) {
-        self.cache.invalidate_all();
+        unimplemented!();
     }
 
-    fn invalidate_entries_if(&mut self, entry: &TraceEntry) {
-        self.invalidate_entries_if(entry);
+    fn invalidate_entries_if(&mut self, _entry: &TraceEntry) {
+        unimplemented!();
     }
 
     fn iterate(&mut self) {
-        self.cache.iter().count();
+        unimplemented!();
     }
 }

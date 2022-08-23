@@ -6,11 +6,16 @@ use std::{
 use crate::{config::Config, Report};
 
 use async_trait::async_trait;
-use fnv::{FnvBuildHasher, FnvHasher};
 use thiserror::Error;
 
 pub(crate) mod async_cache;
 pub(crate) mod dash_cache;
+#[cfg(feature = "hashlink")]
+pub(crate) mod hashlink;
+#[cfg(feature = "quick_cache")]
+pub(crate) mod quick_cache;
+#[cfg(feature = "stretto")]
+pub(crate) mod stretto;
 pub(crate) mod sync_cache;
 pub(crate) mod sync_segmented;
 pub(crate) mod unsync_cache;
@@ -68,7 +73,7 @@ const VALUE_LEN: usize = 128;
 
 pub(crate) fn make_value(config: &Config, key: usize, req_id: usize) -> (u32, Arc<[u8]>) {
     let policy_weight = if config.size_aware {
-        let mut hasher = FnvBuildHasher::default().build_hasher();
+        let mut hasher = DefaultHasher::default().build_hasher();
         req_id.hash(&mut hasher);
         // len will be [4 .. 2^16)
         (hasher.finish() as u16).max(4) as u32
@@ -99,13 +104,18 @@ pub(crate) async fn sleep_task_for_insertion(config: &Config) {
 const HASH_SEED_KEY: u64 = 982922761776577566;
 
 #[derive(Clone, Default)]
-pub(crate) struct BuildFnvHasher;
+pub(crate) struct DefaultHasher;
 
-impl BuildHasher for BuildFnvHasher {
-    type Hasher = FnvHasher;
+impl BuildHasher for DefaultHasher {
+    // Picking a fast but also good algorithm by default to avoids weird scenarios in
+    // some implementations (e.g. poor hashbrown performance, poor bloom filter accuracy).
+    // Algorithms like FNV have poor quality in the low bits when hashing small keys.
+    type Hasher = xxhash_rust::xxh3::Xxh3;
 
     fn build_hasher(&self) -> Self::Hasher {
-        FnvHasher::with_key(HASH_SEED_KEY)
+        xxhash_rust::xxh3::Xxh3Builder::new()
+            .with_seed(HASH_SEED_KEY)
+            .build()
     }
 }
 
