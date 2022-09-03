@@ -1,5 +1,11 @@
 # Mokabench &mdash; Change Log
 
+## Version 0.7.0
+
+### Added
+
+- Added support for quick_cache, stretto and hashlink caches. ([#1][gh-pull-0001])
+
 ## Version 0.6.0
 
 ### Added
@@ -94,3 +100,5 @@
     - `enable-invalidate`
     - `enable-invalidate-all`
     - `enable-invalidate-entries-if`
+
+[gh-pull-0001]: https://github.com/moka-rs/mokabench/pull/1

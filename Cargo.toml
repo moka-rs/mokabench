@@ -1,6 +1,6 @@
 [package]
 name = "mokabench"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -38,10 +38,9 @@ tokio = { version = "1.17.0", features = ["rt-multi-thread", "macros" ] }
 [dependencies.moka09]
 package = "moka"
 optional = true
-# version = "0.9.1"
+# version = "0.9.3"
 git = "https://github.com/moka-rs/moka"
 branch = "master"
-# path = "../moka-epoch09"
 features = ["future", "dash"]
 
 [dependencies.moka08]
