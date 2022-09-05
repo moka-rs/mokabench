@@ -6,6 +6,8 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct StrettoCache {
     config: Config,
+    // https://rust-lang.github.io/rust-clippy/master/index.html#type_complexity
+    #[allow(clippy::type_complexity)]
     cache: ::stretto::Cache<
         usize,
         (u32, Arc<[u8]>),

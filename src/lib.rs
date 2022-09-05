@@ -93,11 +93,20 @@ pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
             if config.iterate && counter % 50_000 == 0 {
                 cache_set.iterate();
             }
+
+            if counter % 1_000_000 == 0 {
+                print_allocation_info();
+            }
         }
     }
 
+    print_allocation_info();
+
     let elapsed = instant.elapsed();
     report.duration = Some(elapsed);
+
+    std::mem::drop(cache_set);
+    run_deferred_and_print_allocation_info();
 
     Ok(report)
 }
@@ -132,6 +141,10 @@ where
 
         if config.iterate && *counter % 50_000 == 0 {
             ops.push(Op::Iterate);
+        }
+
+        if *counter % 1_000_000 == 0 {
+            print_allocation_info();
         }
     }
     Ok(ops)
@@ -176,6 +189,8 @@ fn process_commands(
             }
         }
     }
+
+    crossbeam_epoch::pin().flush();
 }
 
 async fn process_commands_async(
@@ -217,6 +232,8 @@ async fn process_commands_async(
             }
         }
     }
+
+    crossbeam_epoch::pin().flush();
 }
 
 #[allow(clippy::needless_collect)] // on the `handles` variable.
@@ -260,6 +277,8 @@ pub fn run_multi_threads(
         }
     }
 
+    print_allocation_info();
+
     // Drop the sender channel to notify the workers that we are finished.
     std::mem::drop(send);
 
@@ -278,6 +297,10 @@ pub fn run_multi_threads(
     if cfg!(feature = "moka-v09") && config.is_eviction_listener_enabled() {
         report.add_eviction_counts(cache_set.eviction_counters().as_ref().unwrap());
     }
+
+    std::mem::drop(cache_set);
+    std::mem::drop(reports);
+    run_deferred_and_print_allocation_info();
 
     Ok(report)
 }
@@ -323,6 +346,8 @@ pub fn run_multi_threads_dash_cache(
         }
     }
 
+    print_allocation_info();
+
     // Drop the sender channel to notify the workers that we are finished.
     std::mem::drop(send);
 
@@ -337,6 +362,10 @@ pub fn run_multi_threads_dash_cache(
     let mut report = Report::new("Moka Dash Cache", max_cap, Some(num_clients));
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
+
+    std::mem::drop(cache_set);
+    std::mem::drop(reports);
+    run_deferred_and_print_allocation_info();
 
     Ok(report)
 }
@@ -551,6 +580,8 @@ pub fn run_multi_thread_segmented(
         }
     }
 
+    print_allocation_info();
+
     // Drop the sender channel to notify the workers that we are finished.
     std::mem::drop(send);
 
@@ -574,10 +605,14 @@ pub fn run_multi_thread_segmented(
         report.add_eviction_counts(cache_set.eviction_counters().as_ref().unwrap());
     }
 
+    std::mem::drop(cache_set);
+    std::mem::drop(reports);
+    run_deferred_and_print_allocation_info();
+
     Ok(report)
 }
 
-pub async fn run_multi_tasks(
+pub fn run_multi_tasks(
     config: &Config,
     capacity: usize,
     num_clients: u16,
@@ -592,12 +627,13 @@ pub async fn run_multi_tasks(
 
     let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
 
+    let rt = tokio::runtime::Runtime::new()?;
     let handles = (0..num_clients)
         .map(|_| {
             let mut cache = cache_set.clone();
             let ch = receive.clone();
 
-            tokio::task::spawn(async move {
+            rt.spawn(async move {
                 let mut report = Report::new("Moka Async Cache", max_cap, None);
                 process_commands_async(ch, &mut cache, &mut report).await;
                 report
@@ -617,11 +653,13 @@ pub async fn run_multi_tasks(
         }
     }
 
+    print_allocation_info();
+
     // Drop the sender channel to notify the workers that we are finished.
     std::mem::drop(send);
 
     // Wait for the workers to finish and collect their reports.
-    let reports = futures_util::future::join_all(handles).await;
+    let reports = rt.block_on(futures_util::future::join_all(handles));
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.
@@ -635,5 +673,54 @@ pub async fn run_multi_tasks(
         report.add_eviction_counts(cache_set.eviction_counters().as_ref().unwrap());
     }
 
+    std::mem::drop(rt);
+    std::mem::drop(cache_set);
+    run_deferred_and_print_allocation_info();
+
     Ok(report)
+}
+
+fn print_allocation_info() {
+    use tikv_jemalloc_ctl::{epoch, stats};
+
+    let e = epoch::mib().unwrap();
+    e.advance().unwrap();
+    let resident = stats::resident::read().unwrap();
+    let allocated = stats::allocated::read().unwrap();
+
+    println!("allocation,running,{},{}", resident, allocated);
+}
+
+/// Runs deferred destructors in crossbeam-epoch and prints the current allocation
+/// info.
+//
+// TODO: Just run the deferred destructors here. Use `print_allocation_info` for
+// printing.
+fn run_deferred_and_print_allocation_info() {
+    use tikv_jemalloc_ctl::{epoch, stats};
+
+    let mut allocated = std::usize::MAX;
+    let mut unchanged_count = 0usize;
+    loop {
+        crossbeam_epoch::pin().flush();
+
+        let e = epoch::mib().unwrap();
+        e.advance().unwrap();
+        let new_allocated = stats::allocated::read().unwrap();
+
+        if new_allocated == allocated {
+            unchanged_count += 1;
+            if unchanged_count > 50 {
+                break;
+            }
+        } else {
+            allocated = new_allocated;
+            unchanged_count = 0;
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+
+    let resident = stats::resident::read().unwrap();
+    println!("allocation,stopped,{},{}", resident, allocated);
 }

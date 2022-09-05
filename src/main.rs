@@ -7,8 +7,17 @@ use mokabench::{
 
 use clap::{Arg, Command};
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
+#[cfg(target_env = "msvc")]
+compile_error!("Sorry, Windows MSVC target is not supported because we cannot use jemalloc there");
+
+fn main() -> anyhow::Result<()> {
     let (trace_files, mut config) = create_config()?;
     for trace_file in trace_files {
         config.trace_file = trace_file;
@@ -21,21 +30,23 @@ async fn main() -> anyhow::Result<()> {
         );
 
         for capacity in config.trace_file.default_capacities() {
-            run_with_capacity(&config, *capacity).await?
+            run_with_capacity(&config, *capacity)?
         }
     }
 
     Ok(())
 }
 
-async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<()> {
+fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<()> {
     const DEFAULT_NUM_CLIENTS_ARRAY: &[u16] = &[16, 24, 32, 40, 48];
 
     let num_clients_slice: &[u16] = if let Some(n) = &config.num_clients {
-        &n
+        n
     } else {
         DEFAULT_NUM_CLIENTS_ARRAY
     };
+
+    println!("allocation,started,0,0");
 
     // Note that timing results for the unsync cache are not comparable with the rest
     // as it doesn't use the producer/consumer thread pattern as the other caches.
@@ -96,7 +107,7 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
                     the async cache. \"queued\" mode will be used for it."
             );
         }
-        let report = mokabench::run_multi_tasks(config, capacity, *num_clients).await?;
+        let report = mokabench::run_multi_tasks(config, capacity, *num_clients)?;
         println!("{}", report.to_csv_record());
     }
 
@@ -205,7 +216,7 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
     let trace_files = matches
         .values_of(OPTION_TRACE_FILE)
         .unwrap()
-        .map(|t| TraceFile::try_from(t))
+        .map(TraceFile::try_from)
         .collect::<Result<Vec<TraceFile>, _>>()?;
 
     let ttl_secs = match matches.value_of(OPTION_TTL) {

@@ -4,17 +4,24 @@
         "CARGO_TARGET_DIR": "target/ra"
     },
     "cSpell.words": [
+        "actix",
         "clippy",
         "Dharmendra",
         "Hasher",
+        "hashlink",
         "itertools",
+        "jemalloc",
+        "jemallocator",
         "Modha",
         "moka",
         "mokabench",
+        "msvc",
         "oltp",
         "thiserror",
+        "tikv",
         "Toolchain",
-        "unsync"
+        "unsync",
+        "xxhash"
     ],
     "files.watcherExclude": {
         "**/target": true

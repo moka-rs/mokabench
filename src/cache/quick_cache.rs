@@ -6,6 +6,8 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct QuickCache {
     config: Config,
+    // https://rust-lang.github.io/rust-clippy/master/index.html#type_complexity
+    #[allow(clippy::type_complexity)]
     cache: Arc<::quick_cache::sync::Cache<usize, (u32, Arc<[u8]>), DefaultHasher>>,
 }
 

@@ -1,6 +1,6 @@
 [package]
 name = "mokabench"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -20,6 +20,7 @@ async-io = "1.6.0"
 async-trait = "0.1.53"
 clap = "3.1.8"
 crossbeam-channel = "0.5.5"
+crossbeam-epoch = "0.9.10"
 futures-util = "0.3.2"
 itertools = "0.10.3"
 parking_lot = "0.12.0"
@@ -28,17 +29,15 @@ xxhash-rust = { version = "0.8.5", features = ["xxh3"] }
 
 hashlink = { optional = true, version = "0.8" }
 quick_cache = { optional = true, version = "0.1" }
-stretto = { optional = true, version = "0.6" }
+stretto = { optional = true, version = "0.7" }
 
-# actix-rt = "2"
-# actix-rt = "1"
-# async-std = "1"
-tokio = { version = "1.17.0", features = ["rt-multi-thread", "macros" ] }
+# Async Runtime
+tokio = { version = "1.17.0", features = ["rt-multi-thread", "macros"] }
 
 [dependencies.moka09]
 package = "moka"
 optional = true
-# version = "0.9.3"
+# version = "0.9"
 git = "https://github.com/moka-rs/moka"
 branch = "master"
 features = ["future", "dash"]
@@ -48,6 +47,10 @@ package = "moka"
 optional = true
 version = "0.8.6"
 features = ["future", "dash"]
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = "0.5.0"
+tikv-jemalloc-ctl = "0.5.0"
 
 [profile.release]
 debug=true

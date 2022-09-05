@@ -9,6 +9,8 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct HashLink {
     config: Config,
+    // https://rust-lang.github.io/rust-clippy/master/index.html#type_complexity
+    #[allow(clippy::type_complexity)]
     cache: Arc<Mutex<hashlink::LruCache<usize, (u32, Arc<[u8]>), DefaultHasher>>>,
 }
 
