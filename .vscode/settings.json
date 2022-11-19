@@ -1,5 +1,6 @@
 {
     "editor.rulers": [85],
+    "rust-analyzer.cargo.features": ["hashlink", "mini-moka", "quick_cache", "stretto"],
     "rust-analyzer.server.extraEnv": {
         "CARGO_TARGET_DIR": "target/ra"
     },

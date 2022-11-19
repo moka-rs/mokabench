@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 
 pub(crate) mod async_cache;
+#[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
 pub(crate) mod dash_cache;
 #[cfg(feature = "hashlink")]
 pub(crate) mod hashlink;
@@ -18,6 +19,7 @@ pub(crate) mod quick_cache;
 pub(crate) mod stretto;
 pub(crate) mod sync_cache;
 pub(crate) mod sync_segmented;
+#[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
 pub(crate) mod unsync_cache;
 
 pub trait CacheSet<T> {

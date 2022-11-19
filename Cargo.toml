@@ -1,16 +1,18 @@
 [package]
 name = "mokabench"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["moka-v09"]
+default = ["moka-v010"]
 
+moka-v010 = ["moka010"]
 moka-v09 = ["moka09"]
 moka-v08 = ["moka08"]
 hashlink = ["dep:hashlink"]
+mini-moka = ["dep:mini-moka"]
 quick_cache = ["dep:quick_cache"]
 stretto = ["dep:stretto"]
 
@@ -27,20 +29,29 @@ thiserror = "1.0.30"
 xxhash-rust = { version = "0.8.5", features = ["xxh3"] }
 
 hashlink = { optional = true, version = "0.8" }
+mini-moka = { optional = true, version = "0.10" }
 quick_cache = { optional = true, version = "0.1" }
-stretto = { optional = true, version = "0.6" }
+stretto = { optional = true, version = "0.7" }
 
 # actix-rt = "2"
 # actix-rt = "1"
 # async-std = "1"
 tokio = { version = "1.17.0", features = ["rt-multi-thread", "macros" ] }
 
+[dependencies.moka010]
+package = "moka"
+optional = true
+# version = "0.10.0"
+git = "https://github.com/moka-rs/moka"
+branch = "master"
+features = ["future"]
+
 [dependencies.moka09]
 package = "moka"
 optional = true
-# version = "0.9.3"
-git = "https://github.com/moka-rs/moka"
-branch = "master"
+version = "0.9.6"
+# git = "https://github.com/moka-rs/moka"
+# branch = "master"
 features = ["future", "dash"]
 
 [dependencies.moka08]

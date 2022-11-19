@@ -1,5 +1,15 @@
 # Mokabench &mdash; Change Log
 
+## Version 0.8.0
+
+### Added
+
+- Add support for moka v0.10 and mini-moka v0.10. ([#2](gh-pull-0002))
+
+### Changed
+
+- Upgrade stretto to v0.7. ([#2](gh-pull-0002))
+
 ## Version 0.7.0
 
 ### Added
@@ -101,4 +111,6 @@
     - `enable-invalidate-all`
     - `enable-invalidate-entries-if`
 
+<!-- Links -->
+[gh-pull-0002]: https://github.com/moka-rs/mokabench/pull/2
 [gh-pull-0001]: https://github.com/moka-rs/mokabench/pull/1
