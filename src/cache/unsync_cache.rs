@@ -1,6 +1,11 @@
 use super::{CacheSet, Counters, DefaultHasher};
-use crate::moka::unsync::{Cache, CacheBuilder};
 use crate::{config::Config, parser::TraceEntry, report::Report};
+
+#[cfg(feature = "mini-moka")]
+use mini_moka::unsync::{Cache, CacheBuilder};
+
+#[cfg(any(feature = "moka-v08", feature = "moka-v09"))]
+use crate::moka::unsync::{Cache, CacheBuilder};
 
 use std::sync::Arc;
 

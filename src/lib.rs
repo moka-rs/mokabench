@@ -1,13 +1,16 @@
-#[cfg(all(feature = "moka-v09", feature = "moka-v08"))]
+#[cfg(all(feature = "moka-v010", any(feature = "moka-v09", feature = "moka-v08")))]
 compile_error!(
-    "You cannot specify both `moka-v09` and `moka-v8` features at the same time.\n\
-                You might need `--no-default-features` too."
+    "You cannot enable `moka-v09` and/or `moka-v8` features while `moka-v010` is enabled.\n\
+                You might need `--no-default-features`."
 );
+
+#[cfg(feature = "moka-v010")]
+pub(crate) use moka010 as moka;
 
 #[cfg(feature = "moka-v09")]
 pub(crate) use moka09 as moka;
 
-#[cfg(all(feature = "moka-v08", not(feature = "moka-v09")))]
+#[cfg(feature = "moka-v08")]
 pub(crate) use moka08 as moka;
 
 use config::Config;
@@ -24,13 +27,16 @@ mod trace_file;
 
 use cache::{
     async_cache::SharedAsyncCache, sync_cache::SharedSyncCache,
-    sync_segmented::SharedSegmentedMoka, unsync_cache::UnsyncCache, AsyncCacheSet, CacheSet,
+    sync_segmented::SharedSegmentedMoka, AsyncCacheSet, CacheSet,
 };
 use parser::{TraceEntry, TraceParser};
 
 pub use report::Report;
 pub use trace_file::TraceFile;
 
+#[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
+use crate::cache::unsync_cache::UnsyncCache;
+#[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
 use crate::cache::dash_cache::SharedDashCache;
 #[cfg(feature = "hashlink")]
 use crate::cache::hashlink::HashLink;
@@ -39,10 +45,10 @@ use crate::cache::quick_cache::QuickCache;
 #[cfg(feature = "stretto")]
 use crate::cache::stretto::StrettoCache;
 
-#[cfg(feature = "moka-v09")]
+#[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
 mod eviction_counters;
 
-#[cfg(feature = "moka-v09")]
+#[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
 pub(crate) use eviction_counters::EvictionCounters;
 
 pub(crate) enum Op {
@@ -55,13 +61,19 @@ pub(crate) enum Op {
     Iterate,
 }
 
+#[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
 pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
     let mut max_cap = capacity.try_into().unwrap();
     if config.size_aware {
         max_cap *= 2u64.pow(15);
     }
     let mut cache_set = UnsyncCache::new(config, max_cap, capacity);
-    let mut report = Report::new("Moka Unsync Cache", max_cap, Some(1));
+    let name = if cfg!(feature = "mini-moka") {
+        "Mini Moka Unsync Cache"
+    } else {
+        "Moka Unsync Cache"
+    };
+    let mut report = Report::new(name, max_cap, Some(1));
     let mut counter = 0;
 
     let instant = Instant::now();
@@ -275,13 +287,14 @@ pub fn run_multi_threads(
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 
-    if cfg!(feature = "moka-v09") && config.is_eviction_listener_enabled() {
+    if cfg!(any(feature = "moka-v09", feature = "moka-v010")) && config.is_eviction_listener_enabled() {
         report.add_eviction_counts(cache_set.eviction_counters().as_ref().unwrap());
     }
 
     Ok(report)
 }
 
+#[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
 #[allow(clippy::needless_collect)] // on the `handles` variable.
 pub fn run_multi_threads_dash_cache(
     config: &Config,
@@ -304,7 +317,12 @@ pub fn run_multi_threads_dash_cache(
             let ch = receive.clone();
 
             std::thread::spawn(move || {
-                let mut report = Report::new("Moka Cache", max_cap, None);
+                let name = if cfg!(feature = "mini-moka") {
+                    "Mini Moka Sync Cache"
+                } else {
+                    "Moka Dash Cache"
+                };
+                let mut report = Report::new(name, max_cap, None);
                 process_commands(ch, &mut cache, &mut report);
                 report
             })
@@ -334,7 +352,7 @@ pub fn run_multi_threads_dash_cache(
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.
-    let mut report = Report::new("Moka Dash Cache", max_cap, Some(num_clients));
+    let mut report = Report::new("Mini Moka Sync Cache", max_cap, Some(num_clients));
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 
@@ -570,7 +588,7 @@ pub fn run_multi_thread_segmented(
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 
-    if cfg!(feature = "moka-v09") && config.is_eviction_listener_enabled() {
+    if cfg!(any(feature = "moka-v09", feature = "moka-v010")) && config.is_eviction_listener_enabled() {
         report.add_eviction_counts(cache_set.eviction_counters().as_ref().unwrap());
     }
 
@@ -631,7 +649,7 @@ pub async fn run_multi_tasks(
         .iter()
         .for_each(|r| report.merge(r.as_ref().expect("Failed")));
 
-    if cfg!(feature = "moka-v09") && config.is_eviction_listener_enabled() {
+    if cfg!(any(feature = "moka-v09", feature = "moka-v010")) && config.is_eviction_listener_enabled() {
         report.add_eviction_counts(cache_set.eviction_counters().as_ref().unwrap());
     }
 

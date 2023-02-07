@@ -39,6 +39,8 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
 
     // Note that timing results for the unsync cache are not comparable with the rest
     // as it doesn't use the producer/consumer thread pattern as the other caches.
+
+    #[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
     if !config.insert_once && !config.is_eviction_listener_enabled() {
         let report = mokabench::run_single(config, capacity)?;
         println!("{}", report.to_csv_record());
@@ -80,6 +82,17 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
         }
     }
 
+    #[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
+    if !config.insert_once
+        && !config.invalidate_entries_if
+        && !config.is_eviction_listener_enabled()
+    {
+        for num_clients in num_clients_slice {
+            let report = mokabench::run_multi_threads_dash_cache(config, capacity, *num_clients)?;
+            println!("{}", report.to_csv_record());
+        }
+    }
+
     if capacity >= 2_000_000 {
         return Ok(());
     }
@@ -98,16 +111,6 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
         }
         let report = mokabench::run_multi_tasks(config, capacity, *num_clients).await?;
         println!("{}", report.to_csv_record());
-    }
-
-    if !config.insert_once
-        && !config.invalidate_entries_if
-        && !config.is_eviction_listener_enabled()
-    {
-        for num_clients in num_clients_slice {
-            let report = mokabench::run_multi_threads_dash_cache(config, capacity, *num_clients)?;
-            println!("{}", report.to_csv_record());
-        }
     }
 
     let num_segments = 8;

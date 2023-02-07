@@ -8,7 +8,7 @@ use crate::{
     report::Report,
 };
 
-#[cfg(feature = "moka-v09")]
+#[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
 use crate::EvictionCounters;
 
 use std::sync::{
@@ -19,7 +19,7 @@ use std::sync::{
 pub struct SegmentedMoka {
     config: Config,
     cache: SegmentedCache<usize, (u32, Arc<[u8]>), DefaultHasher>,
-    #[cfg(feature = "moka-v09")]
+    #[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
     eviction_counters: Option<Arc<EvictionCounters>>,
 }
 
@@ -28,7 +28,7 @@ impl Clone for SegmentedMoka {
         Self {
             config: self.config.clone(),
             cache: self.cache.clone(),
-            #[cfg(feature = "moka-v09")]
+            #[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
             eviction_counters: self.eviction_counters.as_ref().map(Arc::clone),
         }
     }
@@ -52,7 +52,7 @@ impl SegmentedMoka {
             builder = builder.weigher(|_k, (s, _v)| *s);
         }
 
-        #[cfg(feature = "moka-v09")]
+        #[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
         {
             use crate::moka::notification::{Configuration, DeliveryMode};
 
@@ -89,7 +89,7 @@ impl SegmentedMoka {
             }
         }
 
-        #[cfg(not(feature = "moka-v09"))]
+        #[cfg(not(any(feature = "moka-v09", feature = "moka-v010")))]
         {
             Self {
                 config: config.clone(),
@@ -241,7 +241,7 @@ impl SharedSegmentedMoka {
         Self(SegmentedMoka::new(config, max_cap, init_cap, num_segments))
     }
 
-    #[cfg(feature = "moka-v09")]
+    #[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
     pub(crate) fn eviction_counters(&self) -> Option<Arc<EvictionCounters>> {
         self.0.eviction_counters.as_ref().map(Arc::clone)
     }

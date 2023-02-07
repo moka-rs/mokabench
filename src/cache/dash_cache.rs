@@ -1,11 +1,15 @@
-use super::{CacheSet, Counters /* InitClosureType */, DefaultHasher};
+use super::{CacheSet, Counters, DefaultHasher};
 use crate::{
-    // cache::{InitClosureError1, InitClosureError2},
     config::Config,
-    moka::dash::Cache,
     parser::TraceEntry,
     report::Report,
 };
+
+#[cfg(feature = "mini-moka")]
+use mini_moka::sync::Cache;
+
+#[cfg(all(not(feature = "mini-moka"), any(feature = "moka-v09", feature = "moka-v08")))]
+use crate::moka::dash::Cache;
 
 use std::sync::Arc;
 
@@ -34,9 +38,6 @@ impl DashCache {
         if let Some(tti) = config.tti {
             builder = builder.time_to_idle(tti)
         }
-        // if config.invalidate_entries_if {
-        //     builder = builder.support_invalidation_closures();
-        // }
         if config.size_aware {
             builder = builder.weigher(|_k, (s, _v)| *s);
         }
@@ -56,42 +57,6 @@ impl DashCache {
         super::sleep_thread_for_insertion(&self.config);
         self.cache.insert(key, value);
     }
-
-    // fn get_or_insert_with(&self, key: usize, req_id: usize, is_inserted: Arc<AtomicBool>) {
-    //     self.cache.get_or_insert_with(key, || {
-    //         super::sleep_thread_for_insertion(&self.config);
-    //         is_inserted.store(true, Ordering::Release);
-    //         super::make_value(&self.config, key, req_id)
-    //     });
-    // }
-
-    // fn get_or_try_insert_with(
-    //     &self,
-    //     ty: InitClosureType,
-    //     key: usize,
-    //     req_id: usize,
-    //     is_inserted: Arc<AtomicBool>,
-    // ) {
-    //     match ty {
-    //         InitClosureType::GetOrTryInsertWithError1 => self
-    //             .cache
-    //             .get_or_try_insert_with(key, || {
-    //                 super::sleep_thread_for_insertion(&self.config);
-    //                 is_inserted.store(true, Ordering::Release);
-    //                 Ok(super::make_value(&self.config, key, req_id)) as Result<_, InitClosureError1>
-    //             })
-    //             .is_ok(),
-    //         InitClosureType::GetOrTyyInsertWithError2 => self
-    //             .cache
-    //             .get_or_try_insert_with(key, || {
-    //                 super::sleep_thread_for_insertion(&self.config);
-    //                 is_inserted.store(true, Ordering::Release);
-    //                 Ok(super::make_value(&self.config, key, req_id)) as Result<_, InitClosureError2>
-    //             })
-    //             .is_ok(),
-    //         _ => unreachable!(),
-    //     };
-    // }
 }
 
 impl CacheSet<TraceEntry> for DashCache {
@@ -116,35 +81,6 @@ impl CacheSet<TraceEntry> for DashCache {
     fn get_or_insert_once(&mut self, _entry: &TraceEntry, _report: &mut Report) {
         unimplemented!();
     }
-
-    // fn get_or_insert_once(&mut self, entry: &TraceEntry, report: &mut Report) {
-    //     let mut counters = Counters::default();
-    //     let mut req_id = entry.line_number();
-    //     let is_inserted = Arc::new(AtomicBool::default());
-
-    //     for block in entry.range() {
-    //         {
-    //             let is_inserted2 = Arc::clone(&is_inserted);
-    //             match InitClosureType::select(block) {
-    //                 InitClosureType::GetOrInsert => {
-    //                     self.get_or_insert_with(block, req_id, is_inserted2)
-    //                 }
-    //                 ty => self.get_or_try_insert_with(ty, block, req_id, is_inserted2),
-    //             }
-    //         }
-
-    //         if is_inserted.load(Ordering::Acquire) {
-    //             counters.inserted();
-    //             counters.read_missed();
-    //             is_inserted.store(false, Ordering::Release);
-    //         } else {
-    //             counters.read_hit();
-    //         }
-    //         req_id += 1;
-    //     }
-
-    //     counters.add_to_report(report);
-    // }
 
     fn update(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();

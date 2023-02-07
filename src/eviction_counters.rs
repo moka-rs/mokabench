@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use moka09::notification::RemovalCause;
+use crate::moka::notification::RemovalCause;
 
 #[derive(Default)]
 pub(crate) struct EvictionCounters {
