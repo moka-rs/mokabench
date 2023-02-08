@@ -139,6 +139,7 @@ const OPTION_INVALIDATE: &str = "invalidate";
 const OPTION_INVALIDATE_ALL: &str = "invalidate-all";
 const OPTION_INVALIDATE_IF: &str = "invalidate-entries-if";
 const OPTION_ITERATE: &str = "iterate";
+const OPTION_ENTRY_API: &str = "entry-api";
 const OPTION_REPEAT: &str = "repeat";
 const OPTION_SIZE_AWARE: &str = "size-aware";
 
@@ -197,6 +198,10 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
         .arg(Arg::new(OPTION_INVALIDATE_IF).long(OPTION_INVALIDATE_IF))
         .arg(Arg::new(OPTION_ITERATE).long(OPTION_ITERATE))
         .arg(Arg::new(OPTION_SIZE_AWARE).long(OPTION_SIZE_AWARE));
+
+    if cfg!(not(any(feature = "moka-v09", feature = "moka-v08"))) {
+        app = app.arg(Arg::new(OPTION_ENTRY_API).long(OPTION_ENTRY_API));
+    }
 
     if cfg!(not(feature = "moka-v08")) {
         app = app.arg(
@@ -263,6 +268,7 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
     let invalidate_all = matches.is_present(OPTION_INVALIDATE_ALL);
     let invalidate_entries_if = matches.is_present(OPTION_INVALIDATE_IF);
     let iterate = matches.is_present(OPTION_ITERATE);
+    let entry_api = matches.is_present(OPTION_ENTRY_API);
     let size_aware = matches.is_present(OPTION_SIZE_AWARE);
 
     let eviction_listener = if cfg!(not(feature = "moka-v08")) {
@@ -284,6 +290,10 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
         RemovalNotificationMode::None
     };
 
+    if cfg!(not(any(feature = "moka-v08", feature = "moka-v08"))) && !entry_api {
+        eprintln!("\nWARNING: Testing Moka's entry API is disabled by default. Use --entry-api to enable it\n");
+    }
+
     let config = Config::new(
         trace_files[0],
         ttl_secs,
@@ -296,6 +306,7 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
         invalidate_all,
         invalidate_entries_if,
         iterate,
+        entry_api,
         eviction_listener,
         size_aware,
     );
