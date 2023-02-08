@@ -12,7 +12,7 @@ async fn main() -> anyhow::Result<()> {
     let (trace_files, mut config) = create_config()?;
     for trace_file in trace_files {
         config.trace_file = trace_file;
-        println!("{:?}", config);
+        println!("{config:?}");
         println!();
 
         println!(
@@ -32,7 +32,7 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
     const DEFAULT_NUM_CLIENTS_ARRAY: &[u16] = &[16, 24, 32, 40, 48];
 
     let num_clients_slice: &[u16] = if let Some(n) = &config.num_clients {
-        &n
+        n
     } else {
         DEFAULT_NUM_CLIENTS_ARRAY
     };
@@ -88,7 +88,7 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
         && !config.is_eviction_listener_enabled()
     {
         for num_clients in num_clients_slice {
-            let report = mokabench::run_multi_threads_dash_cache(config, capacity, *num_clients)?;
+            let report = mokabench::run_multi_threads_moka_dash(config, capacity, *num_clients)?;
             println!("{}", report.to_csv_record());
         }
     }
@@ -98,7 +98,7 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
     }
 
     for num_clients in num_clients_slice {
-        let report = mokabench::run_multi_threads(config, capacity, *num_clients)?;
+        let report = mokabench::run_multi_threads_moka_sync(config, capacity, *num_clients)?;
         println!("{}", report.to_csv_record());
     }
 
@@ -109,15 +109,19 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
                     the async cache. \"queued\" mode will be used for it."
             );
         }
-        let report = mokabench::run_multi_tasks(config, capacity, *num_clients).await?;
+        let report = mokabench::run_multi_tasks_moka_async(config, capacity, *num_clients).await?;
         println!("{}", report.to_csv_record());
     }
 
     let num_segments = 8;
 
     for num_clients in num_clients_slice {
-        let report =
-            mokabench::run_multi_thread_segmented(config, capacity, *num_clients, num_segments)?;
+        let report = mokabench::run_multi_threads_moka_segment(
+            config,
+            capacity,
+            *num_clients,
+            num_segments,
+        )?;
         println!("{}", report.to_csv_record());
     }
 
@@ -194,7 +198,7 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
         .arg(Arg::new(OPTION_ITERATE).long(OPTION_ITERATE))
         .arg(Arg::new(OPTION_SIZE_AWARE).long(OPTION_SIZE_AWARE));
 
-    if cfg!(feature = "moka-v09") {
+    if cfg!(not(feature = "moka-v08")) {
         app = app.arg(
             Arg::new(OPTION_EVICTION_LISTENER)
                 .long(OPTION_EVICTION_LISTENER)
@@ -208,14 +212,14 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
     let trace_files = matches
         .values_of(OPTION_TRACE_FILE)
         .unwrap()
-        .map(|t| TraceFile::try_from(t))
+        .map(TraceFile::try_from)
         .collect::<Result<Vec<TraceFile>, _>>()?;
 
     let ttl_secs = match matches.value_of(OPTION_TTL) {
         None => None,
         Some(v) => Some(
             v.parse()
-                .with_context(|| format!(r#"Cannot parse ttl "{}" as a positive integer"#, v))?,
+                .with_context(|| format!(r#"Cannot parse ttl "{v}" as a positive integer"#))?,
         ),
     };
 
@@ -223,7 +227,7 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
         None => None,
         Some(v) => Some(
             v.parse()
-                .with_context(|| format!(r#"Cannot parse tti "{}" as a positive integer"#, v))?,
+                .with_context(|| format!(r#"Cannot parse tti "{v}" as a positive integer"#))?,
         ),
     };
 
@@ -232,7 +236,7 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
         Some(v) => Some(
             v.map(|v| {
                 v.parse().with_context(|| {
-                    format!(r#"Cannot parse num_client "{}" as a positive integer"#, v)
+                    format!(r#"Cannot parse num_client "{v}" as a positive integer"#)
                 })
             })
             .collect::<Result<Vec<u16>, _>>()?,
@@ -243,17 +247,14 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
         None => None,
         Some(v) => Some(
             v.parse()
-                .with_context(|| format!(r#"Cannot parse repeat "{}" as a positive integer"#, v))?,
+                .with_context(|| format!(r#"Cannot parse repeat "{v}" as a positive integer"#))?,
         ),
     };
 
     let insertion_delay_micros = match matches.value_of(OPTION_INSERTION_DELAY) {
         None => None,
         Some(v) => Some(v.parse().with_context(|| {
-            format!(
-                r#"Cannot parse insertion-delay "{}" as a positive integer"#,
-                v
-            )
+            format!(r#"Cannot parse insertion-delay "{v}" as a positive integer"#,)
         })?),
     };
 
@@ -264,7 +265,7 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
     let iterate = matches.is_present(OPTION_ITERATE);
     let size_aware = matches.is_present(OPTION_SIZE_AWARE);
 
-    let eviction_listener = if cfg!(feature = "moka-v09") {
+    let eviction_listener = if cfg!(not(feature = "moka-v08")) {
         if let Some(v) = matches.value_of(OPTION_EVICTION_LISTENER) {
             match v {
                 "immediate" => RemovalNotificationMode::Immediate,

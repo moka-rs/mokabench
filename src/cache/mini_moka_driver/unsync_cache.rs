@@ -1,5 +1,9 @@
-use super::{CacheSet, Counters, DefaultHasher};
-use crate::{config::Config, parser::TraceEntry, report::Report};
+use crate::{
+    cache::{self, CacheDriver, Counters, DefaultHasher, Key, Value},
+    config::Config,
+    parser::TraceEntry,
+    report::Report,
+};
 
 #[cfg(feature = "mini-moka")]
 use mini_moka::unsync::{Cache, CacheBuilder};
@@ -7,14 +11,12 @@ use mini_moka::unsync::{Cache, CacheBuilder};
 #[cfg(any(feature = "moka-v08", feature = "moka-v09"))]
 use crate::moka::unsync::{Cache, CacheBuilder};
 
-use std::sync::Arc;
-
-pub struct UnsyncCache {
+pub struct MiniMokaUnsyncCache {
     config: Config,
-    cache: Cache<usize, (u32, Arc<[u8]>), DefaultHasher>,
+    cache: Cache<Key, Value, DefaultHasher>,
 }
 
-impl UnsyncCache {
+impl MiniMokaUnsyncCache {
     pub fn new(config: &Config, max_cap: u64, init_cap: usize) -> Self {
         let mut builder = CacheBuilder::new(max_cap).initial_capacity(init_cap);
         if let Some(ttl) = config.ttl {
@@ -38,8 +40,8 @@ impl UnsyncCache {
     }
 
     fn insert(&mut self, key: usize, req_id: usize) {
-        let value = super::make_value(&self.config, key, req_id);
-        super::sleep_thread_for_insertion(&self.config);
+        let value = cache::make_value(&self.config, key, req_id);
+        cache::sleep_thread_for_insertion(&self.config);
         self.cache.insert(key, value);
     }
 
@@ -51,7 +53,7 @@ impl UnsyncCache {
     }
 }
 
-impl CacheSet<TraceEntry> for UnsyncCache {
+impl CacheDriver<TraceEntry> for MiniMokaUnsyncCache {
     fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();

@@ -1,9 +1,13 @@
-use super::{AsyncCacheSet, Counters, DefaultHasher, InitClosureError1, InitClosureType};
+use super::{InitClosureError1, InitClosureError2, InitClosureType};
+use crate::cache::{Key, Value};
 use crate::moka::future::Cache;
-use crate::{cache::InitClosureError2, config::Config, parser::TraceEntry, report::Report};
-
-#[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
-use crate::EvictionCounters;
+use crate::{
+    cache::{self, AsyncCacheDriver, Counters, DefaultHasher},
+    config::Config,
+    parser::TraceEntry,
+    report::Report,
+    EvictionCounters,
+};
 
 use async_trait::async_trait;
 use std::sync::{
@@ -11,26 +15,26 @@ use std::sync::{
     Arc,
 };
 
-pub struct AsyncCache {
-    config: Config,
-    cache: Cache<usize, (u32, Arc<[u8]>), DefaultHasher>,
-    #[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
+pub struct MokaAsyncCache {
+    config: Arc<Config>,
+    cache: Cache<Key, Value, DefaultHasher>,
     eviction_counters: Option<Arc<EvictionCounters>>,
 }
 
-impl Clone for AsyncCache {
+impl Clone for MokaAsyncCache {
     fn clone(&self) -> Self {
         Self {
-            config: self.config.clone(),
+            config: Arc::clone(&self.config),
             cache: self.cache.clone(),
-            #[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
             eviction_counters: self.eviction_counters.as_ref().map(Arc::clone),
         }
     }
 }
 
-impl AsyncCache {
+impl MokaAsyncCache {
     pub fn new(config: &Config, max_cap: u64, init_cap: usize) -> Self {
+        let config = Arc::new(config.clone());
+
         let mut builder = Cache::builder()
             .max_capacity(max_cap)
             .initial_capacity(init_cap);
@@ -47,7 +51,16 @@ impl AsyncCache {
             builder = builder.weigher(|_k, (s, _v)| *s);
         }
 
-        #[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
+        #[cfg(feature = "moka-v08")]
+        {
+            Self {
+                config,
+                cache: builder.build_with_hasher(DefaultHasher::default()),
+                eviction_counters: None,
+            }
+        }
+
+        #[cfg(not(feature = "moka-v08"))]
         {
             let eviction_counters;
 
@@ -66,17 +79,9 @@ impl AsyncCache {
             }
 
             Self {
-                config: config.clone(),
+                config,
                 cache: builder.build_with_hasher(DefaultHasher::default()),
                 eviction_counters,
-            }
-        }
-
-        #[cfg(not(any(feature = "moka-v09", feature = "moka-v010")))]
-        {
-            Self {
-                config: config.clone(),
-                cache: builder.build_with_hasher(DefaultHasher::default()),
             }
         }
     }
@@ -86,17 +91,17 @@ impl AsyncCache {
     }
 
     async fn insert(&self, key: usize, req_id: usize) {
-        let value = super::make_value(&self.config, key, req_id);
-        super::sleep_task_for_insertion(&self.config).await;
+        let value = cache::make_value(&self.config, key, req_id);
+        cache::sleep_task_for_insertion(&self.config).await;
         self.cache.insert(key, value).await;
     }
 
     async fn get_with(&self, key: usize, req_id: usize, is_inserted: Arc<AtomicBool>) {
         self.cache
             .get_with(key, async {
-                super::sleep_task_for_insertion(&self.config).await;
+                cache::sleep_task_for_insertion(&self.config).await;
                 is_inserted.store(true, Ordering::Release);
-                super::make_value(&self.config, key, req_id)
+                cache::make_value(&self.config, key, req_id)
             })
             .await;
     }
@@ -112,18 +117,18 @@ impl AsyncCache {
             InitClosureType::GetOrTryInsertWithError1 => self
                 .cache
                 .try_get_with(key, async {
-                    super::sleep_task_for_insertion(&self.config).await;
+                    cache::sleep_task_for_insertion(&self.config).await;
                     is_inserted.store(true, Ordering::Release);
-                    Ok(super::make_value(&self.config, key, req_id)) as Result<_, InitClosureError1>
+                    Ok(cache::make_value(&self.config, key, req_id)) as Result<_, InitClosureError1>
                 })
                 .await
                 .is_ok(),
             InitClosureType::GetOrTyyInsertWithError2 => self
                 .cache
                 .try_get_with(key, async {
-                    super::sleep_task_for_insertion(&self.config).await;
+                    cache::sleep_task_for_insertion(&self.config).await;
                     is_inserted.store(true, Ordering::Release);
-                    Ok(super::make_value(&self.config, key, req_id)) as Result<_, InitClosureError2>
+                    Ok(cache::make_value(&self.config, key, req_id)) as Result<_, InitClosureError2>
                 })
                 .await
                 .is_ok(),
@@ -133,7 +138,7 @@ impl AsyncCache {
 }
 
 #[async_trait]
-impl AsyncCacheSet<TraceEntry> for AsyncCache {
+impl AsyncCacheDriver<TraceEntry> for MokaAsyncCache {
     async fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
@@ -222,54 +227,8 @@ impl AsyncCacheSet<TraceEntry> for AsyncCache {
             }
         }
     }
-}
 
-pub struct SharedAsyncCache(AsyncCache);
-
-impl SharedAsyncCache {
-    pub fn new(config: &Config, max_cap: u64, init_cap: usize) -> Self {
-        Self(AsyncCache::new(config, max_cap, init_cap))
-    }
-
-    #[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
-    pub(crate) fn eviction_counters(&self) -> Option<Arc<EvictionCounters>> {
-        self.0.eviction_counters.as_ref().map(Arc::clone)
-    }
-}
-
-impl Clone for SharedAsyncCache {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-#[async_trait]
-impl AsyncCacheSet<TraceEntry> for SharedAsyncCache {
-    async fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
-        self.0.get_or_insert(entry, report).await
-    }
-
-    async fn get_or_insert_once(&mut self, entry: &TraceEntry, report: &mut Report) {
-        self.0.get_or_insert_once(entry, report).await
-    }
-
-    async fn update(&mut self, entry: &TraceEntry, report: &mut Report) {
-        self.0.update(entry, report).await;
-    }
-
-    async fn invalidate(&mut self, entry: &TraceEntry) {
-        self.0.invalidate(entry).await;
-    }
-
-    fn invalidate_all(&mut self) {
-        self.0.invalidate_all();
-    }
-
-    fn invalidate_entries_if(&mut self, entry: &TraceEntry) {
-        self.0.invalidate_entries_if(entry);
-    }
-
-    async fn iterate(&mut self) {
-        self.0.iterate().await;
+    fn eviction_counters(&self) -> Option<Arc<EvictionCounters>> {
+        self.eviction_counters.as_ref().map(Arc::clone)
     }
 }

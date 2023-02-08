@@ -2,6 +2,26 @@ use std::time::Duration;
 
 use crate::eviction_counters::EvictionCounters;
 
+pub struct ReportBuilder {
+    name: String,
+    capacity: u64,
+    num_workers: Option<u16>,
+}
+
+impl ReportBuilder {
+    pub fn new(name: &str, capacity: u64, num_workers: Option<u16>) -> Self {
+        Self {
+            name: name.to_string(),
+            capacity,
+            num_workers,
+        }
+    }
+
+    pub fn build(&self) -> Report {
+        Report::new(&self.name, self.capacity, self.num_workers)
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct Report {
     pub name: String,

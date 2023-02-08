@@ -4,6 +4,10 @@ compile_error!(
                 You might need `--no-default-features`."
 );
 
+use std::io::prelude::*;
+use std::sync::Arc;
+use std::{fs::File, io::BufReader, time::Instant};
+
 #[cfg(feature = "moka-v010")]
 pub(crate) use moka010 as moka;
 
@@ -13,45 +17,43 @@ pub(crate) use moka09 as moka;
 #[cfg(feature = "moka-v08")]
 pub(crate) use moka08 as moka;
 
-use config::Config;
-use crossbeam_channel::Receiver;
-use itertools::Itertools;
-use std::io::prelude::*;
-use std::{fs::File, io::BufReader, time::Instant};
-
 mod cache;
 pub mod config;
+mod eviction_counters;
+mod load_gen;
 mod parser;
 mod report;
 mod trace_file;
 
-use cache::{
-    async_cache::SharedAsyncCache, sync_cache::SharedSyncCache,
-    sync_segmented::SharedSegmentedMoka, AsyncCacheSet, CacheSet,
-};
-use parser::{TraceEntry, TraceParser};
-
+pub(crate) use eviction_counters::EvictionCounters;
 pub use report::Report;
 pub use trace_file::TraceFile;
 
-#[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
-use crate::cache::unsync_cache::UnsyncCache;
-#[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
-use crate::cache::dash_cache::SharedDashCache;
+use cache::{
+    moka_driver::{
+        async_cache::MokaAsyncCache, sync_cache::MokaSyncCache, sync_segmented::MokaSegmentedCache,
+    },
+    AsyncCacheDriver, CacheDriver,
+};
+use config::Config;
+use itertools::Itertools;
+use parser::TraceEntry;
+use report::ReportBuilder;
+
 #[cfg(feature = "hashlink")]
 use crate::cache::hashlink::HashLink;
+#[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
+use crate::cache::mini_moka_driver::{
+    sync_cache::MiniMokSyncCache, unsync_cache::MiniMokaUnsyncCache,
+};
 #[cfg(feature = "quick_cache")]
 use crate::cache::quick_cache::QuickCache;
 #[cfg(feature = "stretto")]
 use crate::cache::stretto::StrettoCache;
 
-#[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
-mod eviction_counters;
+const BATCH_SIZE: usize = 200;
 
-#[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
-pub(crate) use eviction_counters::EvictionCounters;
-
-pub(crate) enum Op {
+pub(crate) enum Command {
     GetOrInsert(String, usize),
     GetOrInsertOnce(String, usize),
     Update(String, usize),
@@ -61,13 +63,116 @@ pub(crate) enum Op {
     Iterate,
 }
 
+pub fn run_multi_threads_moka_sync(
+    config: &Config,
+    capacity: usize,
+    num_clients: u16,
+) -> anyhow::Result<Report> {
+    let max_cap = if config.size_aware {
+        capacity as u64 * 2u64.pow(15)
+    } else {
+        capacity as u64
+    };
+    let cache_driver = MokaSyncCache::new(config, max_cap, capacity);
+    let report_builder = ReportBuilder::new("Moka Sync Cache", max_cap, Some(num_clients));
+    run_multi_threads(config, num_clients, cache_driver, report_builder)
+}
+
+pub fn run_multi_threads_moka_segment(
+    config: &Config,
+    capacity: usize,
+    num_clients: u16,
+    num_segments: usize,
+) -> anyhow::Result<Report> {
+    let max_cap = if config.size_aware {
+        capacity as u64 * 2u64.pow(15)
+    } else {
+        capacity as u64
+    };
+    let cache_driver = MokaSegmentedCache::new(config, max_cap, capacity, num_segments);
+    let report_name = format!("Moka SegmentedCache({num_segments})");
+    let report_builder = ReportBuilder::new(&report_name, max_cap, Some(num_clients));
+    run_multi_threads(config, num_clients, cache_driver, report_builder)
+}
+
+pub async fn run_multi_tasks_moka_async(
+    config: &Config,
+    capacity: usize,
+    num_clients: u16,
+) -> anyhow::Result<Report> {
+    let max_cap = if config.size_aware {
+        capacity as u64 * 2u64.pow(15)
+    } else {
+        capacity as u64
+    };
+    let cache_driver = MokaAsyncCache::new(config, max_cap, capacity);
+    let report_builder = ReportBuilder::new("Moka Async Cache", max_cap, Some(num_clients));
+    run_multi_tasks(config, num_clients, cache_driver, report_builder).await
+}
+
+#[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
+pub fn run_multi_threads_moka_dash(
+    config: &Config,
+    capacity: usize,
+    num_clients: u16,
+) -> anyhow::Result<Report> {
+    let max_cap = if config.size_aware {
+        capacity as u64 * 2u64.pow(15)
+    } else {
+        capacity as u64
+    };
+    let cache_driver = MiniMokSyncCache::new(config, max_cap, capacity);
+    let report_name = if cfg!(feature = "mini-moka") {
+        "Mini Moka Sync Cache"
+    } else {
+        "Moka Dash Cache"
+    };
+    let report_builder = ReportBuilder::new(report_name, max_cap, Some(num_clients));
+    run_multi_threads(config, num_clients, cache_driver, report_builder)
+}
+
+#[cfg(feature = "hashlink")]
+pub fn run_multi_threads_hashlink(
+    config: &Config,
+    capacity: usize,
+    num_clients: u16,
+) -> anyhow::Result<Report> {
+    let cache_driver = HashLink::new(config, capacity);
+    let report_builder = ReportBuilder::new("HashLink", capacity as _, Some(num_clients));
+    run_multi_threads(config, num_clients, cache_driver, report_builder)
+}
+
+#[cfg(feature = "quick_cache")]
+#[allow(clippy::needless_collect)] // on the `handles` variable.
+pub fn run_multi_threads_quick_cache(
+    config: &Config,
+    capacity: usize,
+    num_clients: u16,
+) -> anyhow::Result<Report> {
+    let cache_driver = QuickCache::new(config, capacity);
+    let report_builder = ReportBuilder::new("QuickCache", capacity as _, Some(num_clients));
+    run_multi_threads(config, num_clients, cache_driver, report_builder)
+}
+
+#[cfg(feature = "stretto")]
+#[allow(clippy::needless_collect)] // on the `handles` variable.
+pub fn run_multi_threads_stretto(
+    config: &Config,
+    capacity: usize,
+    num_clients: u16,
+) -> anyhow::Result<Report> {
+    let cache_driver = StrettoCache::new(config, capacity);
+    let report_builder = ReportBuilder::new("Stretto", capacity as _, Some(num_clients));
+    run_multi_threads(config, num_clients, cache_driver, report_builder)
+}
+
 #[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
 pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
     let mut max_cap = capacity.try_into().unwrap();
     if config.size_aware {
         max_cap *= 2u64.pow(15);
     }
-    let mut cache_set = UnsyncCache::new(config, max_cap, capacity);
+    let mut cache_driver = MiniMokaUnsyncCache::new(config, max_cap, capacity);
     let name = if cfg!(feature = "mini-moka") {
         "Mini Moka Unsync Cache"
     } else {
@@ -81,30 +186,10 @@ pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
     for _ in 0..(config.repeat.unwrap_or(1)) {
         let f = File::open(config.trace_file.path())?;
         let reader = BufReader::new(f);
-        let mut parser = parser::GenericTraceParser;
-        for line in reader.lines() {
-            let entry = if let Some(entry) = parser.parse(&line?, counter)? {
-                entry
-            } else {
-                continue;
-            };
-            counter += 1;
-            if config.invalidate_all && counter % 100_000 == 0 {
-                cache_set.invalidate_all();
-                cache_set.get_or_insert(&entry, &mut report);
-            } else if config.size_aware && counter % 11 == 0 {
-                cache_set.update(&entry, &mut report);
-            } else if config.invalidate && counter % 8 == 0 {
-                cache_set.invalidate(&entry);
-            } else if config.insert_once && counter % 3 == 0 {
-                cache_set.get_or_insert_once(&entry, &mut report);
-            } else {
-                cache_set.get_or_insert(&entry, &mut report);
-            }
 
-            if config.iterate && counter % 50_000 == 0 {
-                cache_set.iterate();
-            }
+        for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
+            let commands = load_gen::generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
+            cache::process_commands(commands, &mut cache_driver, &mut report);
         }
     }
 
@@ -114,147 +199,27 @@ pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
     Ok(report)
 }
 
-fn generate_commands<I>(
-    config: &Config,
-    max_chunk_size: usize,
-    counter: &mut usize,
-    chunk: I,
-) -> anyhow::Result<Vec<Op>>
-where
-    I: Iterator<Item = std::io::Result<String>>,
-{
-    let mut ops = Vec::with_capacity(max_chunk_size);
-    for line in chunk {
-        let line = line?;
-        *counter += 1;
-        if config.invalidate_all && *counter % 100_000 == 0 {
-            ops.push(Op::InvalidateAll);
-            ops.push(Op::GetOrInsert(line, *counter));
-        } else if config.invalidate_entries_if && *counter % 5_000 == 0 {
-            ops.push(Op::InvalidateEntriesIf(line, *counter));
-        } else if config.size_aware && *counter % 11 == 0 {
-            ops.push(Op::Update(line, *counter));
-        } else if config.invalidate && *counter % 8 == 0 {
-            ops.push(Op::Invalidate(line, *counter));
-        } else if config.insert_once && *counter % 3 == 0 {
-            ops.push(Op::GetOrInsertOnce(line, *counter));
-        } else {
-            ops.push(Op::GetOrInsert(line, *counter));
-        }
-
-        if config.iterate && *counter % 50_000 == 0 {
-            ops.push(Op::Iterate);
-        }
-    }
-    Ok(ops)
-}
-
-fn process_commands(
-    receiver: Receiver<Vec<Op>>,
-    cache: &mut impl CacheSet<TraceEntry>,
-    report: &mut Report,
-) {
-    let mut parser = parser::GenericTraceParser;
-    while let Ok(ops) = receiver.recv() {
-        for op in ops {
-            match op {
-                Op::GetOrInsert(line, line_number) => {
-                    if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                        cache.get_or_insert(&entry, report);
-                    }
-                }
-                Op::GetOrInsertOnce(line, line_number) => {
-                    if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                        cache.get_or_insert_once(&entry, report);
-                    }
-                }
-                Op::Update(line, line_number) => {
-                    if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                        cache.update(&entry, report);
-                    }
-                }
-                Op::Invalidate(line, line_number) => {
-                    if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                        cache.invalidate(&entry);
-                    }
-                }
-                Op::InvalidateAll => cache.invalidate_all(),
-                Op::InvalidateEntriesIf(line, line_number) => {
-                    if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                        cache.invalidate_entries_if(&entry);
-                    }
-                }
-                Op::Iterate => cache.iterate(),
-            }
-        }
-    }
-}
-
-async fn process_commands_async(
-    receiver: Receiver<Vec<Op>>,
-    cache: &mut impl AsyncCacheSet<TraceEntry>,
-    report: &mut Report,
-) {
-    let mut parser = parser::GenericTraceParser;
-    while let Ok(ops) = receiver.recv() {
-        for op in ops {
-            match op {
-                Op::GetOrInsert(line, line_number) => {
-                    if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                        cache.get_or_insert(&entry, report).await;
-                    }
-                }
-                Op::GetOrInsertOnce(line, line_number) => {
-                    if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                        cache.get_or_insert_once(&entry, report).await;
-                    }
-                }
-                Op::Update(line, line_number) => {
-                    if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                        cache.update(&entry, report).await;
-                    }
-                }
-                Op::Invalidate(line, line_number) => {
-                    if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                        cache.invalidate(&entry).await;
-                    }
-                }
-                Op::InvalidateAll => cache.invalidate_all(),
-                Op::InvalidateEntriesIf(line, line_number) => {
-                    if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                        cache.invalidate_entries_if(&entry);
-                    }
-                }
-                Op::Iterate => cache.iterate().await,
-            }
-        }
-    }
-}
-
 #[allow(clippy::needless_collect)] // on the `handles` variable.
-pub fn run_multi_threads(
+fn run_multi_threads(
     config: &Config,
-    capacity: usize,
     num_clients: u16,
+    cache_driver: impl CacheDriver<TraceEntry> + Clone + Send + 'static,
+    report_builder: ReportBuilder,
 ) -> anyhow::Result<Report> {
-    let mut max_cap = capacity.try_into().unwrap();
-    if config.size_aware {
-        max_cap *= 2u64.pow(15);
-    }
-    let cache_set = SharedSyncCache::new(config, max_cap, capacity);
-
-    const BATCH_SIZE: usize = 200;
-
-    let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
+    let report_builder = Arc::new(report_builder);
+    let (send, receive) = crossbeam_channel::bounded::<Vec<Command>>(100);
 
     let handles = (0..num_clients)
         .map(|_| {
-            let mut cache = cache_set.clone();
+            let mut cache = cache_driver.clone();
             let ch = receive.clone();
+            let rb = Arc::clone(&report_builder);
 
             std::thread::spawn(move || {
-                let mut report = Report::new("Moka Cache", max_cap, None);
-                process_commands(ch, &mut cache, &mut report);
+                let mut report = rb.build();
+                while let Ok(commands) = ch.recv() {
+                    cache::process_commands(commands, &mut cache, &mut report);
+                }
                 report
             })
         })
@@ -267,7 +232,7 @@ pub fn run_multi_threads(
         let f = File::open(config.trace_file.path())?;
         let reader = BufReader::new(f);
         for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-            let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
+            let commands = load_gen::generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
             send.send(commands)?;
         }
     }
@@ -283,341 +248,37 @@ pub fn run_multi_threads(
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.
-    let mut report = Report::new("Moka Sync Cache", max_cap, Some(num_clients));
+    let mut report = report_builder.build();
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 
-    if cfg!(any(feature = "moka-v09", feature = "moka-v010")) && config.is_eviction_listener_enabled() {
-        report.add_eviction_counts(cache_set.eviction_counters().as_ref().unwrap());
+    if config.is_eviction_listener_enabled() {
+        report.add_eviction_counts(cache_driver.eviction_counters().as_ref().unwrap());
     }
 
     Ok(report)
 }
 
-#[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
-#[allow(clippy::needless_collect)] // on the `handles` variable.
-pub fn run_multi_threads_dash_cache(
+async fn run_multi_tasks(
     config: &Config,
-    capacity: usize,
     num_clients: u16,
+    cache_driver: impl AsyncCacheDriver<TraceEntry> + Clone + Send + 'static,
+    report_builder: ReportBuilder,
 ) -> anyhow::Result<Report> {
-    let mut max_cap = capacity.try_into().unwrap();
-    if config.size_aware {
-        max_cap *= 2u64.pow(15);
-    }
-    let cache_set = SharedDashCache::new(config, max_cap, capacity);
-
-    const BATCH_SIZE: usize = 200;
-
-    let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
+    let report_builder = Arc::new(report_builder);
+    let (send, receive) = crossbeam_channel::bounded::<Vec<Command>>(100);
 
     let handles = (0..num_clients)
         .map(|_| {
-            let mut cache = cache_set.clone();
+            let mut cache = cache_driver.clone();
             let ch = receive.clone();
-
-            std::thread::spawn(move || {
-                let name = if cfg!(feature = "mini-moka") {
-                    "Mini Moka Sync Cache"
-                } else {
-                    "Moka Dash Cache"
-                };
-                let mut report = Report::new(name, max_cap, None);
-                process_commands(ch, &mut cache, &mut report);
-                report
-            })
-        })
-        .collect::<Vec<_>>();
-
-    let mut counter = 0;
-    let instant = Instant::now();
-
-    for _ in 0..(config.repeat.unwrap_or(1)) {
-        let f = File::open(config.trace_file.path())?;
-        let reader = BufReader::new(f);
-        for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-            let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
-            send.send(commands)?;
-        }
-    }
-
-    // Drop the sender channel to notify the workers that we are finished.
-    std::mem::drop(send);
-
-    // Wait for the workers to finish and collect their reports.
-    let reports = handles
-        .into_iter()
-        .map(|h| h.join().expect("Failed"))
-        .collect::<Vec<_>>();
-    let elapsed = instant.elapsed();
-
-    // Merge the reports into one.
-    let mut report = Report::new("Mini Moka Sync Cache", max_cap, Some(num_clients));
-    report.duration = Some(elapsed);
-    reports.iter().for_each(|r| report.merge(r));
-
-    Ok(report)
-}
-
-#[cfg(feature = "hashlink")]
-#[allow(clippy::needless_collect)] // on the `handles` variable.
-pub fn run_multi_threads_hashlink(
-    config: &Config,
-    capacity: usize,
-    num_clients: u16,
-) -> anyhow::Result<Report> {
-    let cache_set = HashLink::new(config, capacity);
-
-    const BATCH_SIZE: usize = 200;
-
-    let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
-
-    let handles = (0..num_clients)
-        .map(|_| {
-            let mut cache = cache_set.clone();
-            let ch = receive.clone();
-
-            std::thread::spawn(move || {
-                let mut report = Report::new("HashLink", capacity as _, None);
-                process_commands(ch, &mut cache, &mut report);
-                report
-            })
-        })
-        .collect::<Vec<_>>();
-
-    let mut counter = 0;
-    let instant = Instant::now();
-
-    for _ in 0..(config.repeat.unwrap_or(1)) {
-        let f = File::open(config.trace_file.path())?;
-        let reader = BufReader::new(f);
-        for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-            let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
-            send.send(commands)?;
-        }
-    }
-
-    // Drop the sender channel to notify the workers that we are finished.
-    std::mem::drop(send);
-
-    // Wait for the workers to finish and collect their reports.
-    let reports = handles
-        .into_iter()
-        .map(|h| h.join().expect("Failed"))
-        .collect::<Vec<_>>();
-    let elapsed = instant.elapsed();
-
-    // Merge the reports into one.
-    let mut report = Report::new("HashLink", capacity as _, Some(num_clients));
-    report.duration = Some(elapsed);
-    reports.iter().for_each(|r| report.merge(r));
-
-    Ok(report)
-}
-
-#[cfg(feature = "quick_cache")]
-#[allow(clippy::needless_collect)] // on the `handles` variable.
-pub fn run_multi_threads_quick_cache(
-    config: &Config,
-    capacity: usize,
-    num_clients: u16,
-) -> anyhow::Result<Report> {
-    let cache_set = QuickCache::new(config, capacity);
-
-    const BATCH_SIZE: usize = 200;
-
-    let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
-
-    let handles = (0..num_clients)
-        .map(|_| {
-            let mut cache = cache_set.clone();
-            let ch = receive.clone();
-
-            std::thread::spawn(move || {
-                let mut report = Report::new("QuickCache", capacity as _, None);
-                process_commands(ch, &mut cache, &mut report);
-                report
-            })
-        })
-        .collect::<Vec<_>>();
-
-    let mut counter = 0;
-    let instant = Instant::now();
-
-    for _ in 0..(config.repeat.unwrap_or(1)) {
-        let f = File::open(config.trace_file.path())?;
-        let reader = BufReader::new(f);
-        for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-            let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
-            send.send(commands)?;
-        }
-    }
-
-    // Drop the sender channel to notify the workers that we are finished.
-    std::mem::drop(send);
-
-    // Wait for the workers to finish and collect their reports.
-    let reports = handles
-        .into_iter()
-        .map(|h| h.join().expect("Failed"))
-        .collect::<Vec<_>>();
-    let elapsed = instant.elapsed();
-
-    // Merge the reports into one.
-    let mut report = Report::new("QuickCache", capacity as _, Some(num_clients));
-    report.duration = Some(elapsed);
-    reports.iter().for_each(|r| report.merge(r));
-
-    Ok(report)
-}
-
-#[cfg(feature = "stretto")]
-#[allow(clippy::needless_collect)] // on the `handles` variable.
-pub fn run_multi_threads_stretto(
-    config: &Config,
-    capacity: usize,
-    num_clients: u16,
-) -> anyhow::Result<Report> {
-    let cache_set = StrettoCache::new(config, capacity);
-
-    const BATCH_SIZE: usize = 200;
-
-    let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
-
-    let handles = (0..num_clients)
-        .map(|_| {
-            let mut cache = cache_set.clone();
-            let ch = receive.clone();
-
-            std::thread::spawn(move || {
-                let mut report = Report::new("Stretto", capacity as _, None);
-                process_commands(ch, &mut cache, &mut report);
-                report
-            })
-        })
-        .collect::<Vec<_>>();
-
-    let mut counter = 0;
-    let instant = Instant::now();
-
-    for _ in 0..(config.repeat.unwrap_or(1)) {
-        let f = File::open(config.trace_file.path())?;
-        let reader = BufReader::new(f);
-        for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-            let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
-            send.send(commands)?;
-        }
-    }
-
-    // Drop the sender channel to notify the workers that we are finished.
-    std::mem::drop(send);
-
-    // Wait for the workers to finish and collect their reports.
-    let reports = handles
-        .into_iter()
-        .map(|h| h.join().expect("Failed"))
-        .collect::<Vec<_>>();
-    let elapsed = instant.elapsed();
-
-    // Merge the reports into one.
-    let mut report = Report::new("Stretto", capacity as _, Some(num_clients));
-    report.duration = Some(elapsed);
-    reports.iter().for_each(|r| report.merge(r));
-
-    Ok(report)
-}
-
-#[allow(clippy::needless_collect)] // on the `handles` variable.
-pub fn run_multi_thread_segmented(
-    config: &Config,
-    capacity: usize,
-    num_clients: u16,
-    num_segments: usize,
-) -> anyhow::Result<Report> {
-    let mut max_cap = capacity.try_into().unwrap();
-    if config.size_aware {
-        max_cap *= 2u64.pow(15);
-    }
-    let cache_set = SharedSegmentedMoka::new(config, max_cap, capacity, num_segments);
-
-    const BATCH_SIZE: usize = 200;
-
-    let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
-
-    let handles = (0..num_clients)
-        .map(|_| {
-            let mut cache = cache_set.clone();
-            let ch = receive.clone();
-
-            std::thread::spawn(move || {
-                let mut report = Report::new("Moka SegmentedCache", max_cap, None);
-                process_commands(ch, &mut cache, &mut report);
-                report
-            })
-        })
-        .collect::<Vec<_>>();
-
-    let mut counter = 0;
-    let instant = Instant::now();
-
-    for _ in 0..(config.repeat.unwrap_or(1)) {
-        let f = File::open(config.trace_file.path())?;
-        let reader = BufReader::new(f);
-        for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-            let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
-            send.send(commands)?;
-        }
-    }
-
-    // Drop the sender channel to notify the workers that we are finished.
-    std::mem::drop(send);
-
-    // Wait for the workers to finish and collect their reports.
-    let reports = handles
-        .into_iter()
-        .map(|h| h.join().expect("Failed"))
-        .collect::<Vec<_>>();
-    let elapsed = instant.elapsed();
-
-    // Merge the reports into one.
-    let mut report = Report::new(
-        &format!("Moka SegmentedCache({})", num_segments),
-        max_cap,
-        Some(num_clients),
-    );
-    report.duration = Some(elapsed);
-    reports.iter().for_each(|r| report.merge(r));
-
-    if cfg!(any(feature = "moka-v09", feature = "moka-v010")) && config.is_eviction_listener_enabled() {
-        report.add_eviction_counts(cache_set.eviction_counters().as_ref().unwrap());
-    }
-
-    Ok(report)
-}
-
-pub async fn run_multi_tasks(
-    config: &Config,
-    capacity: usize,
-    num_clients: u16,
-) -> anyhow::Result<Report> {
-    let mut max_cap = capacity.try_into().unwrap();
-    if config.size_aware {
-        max_cap *= 2u64.pow(15);
-    }
-    let cache_set = SharedAsyncCache::new(config, max_cap, capacity);
-
-    const BATCH_SIZE: usize = 200;
-
-    let (send, receive) = crossbeam_channel::bounded::<Vec<Op>>(100);
-
-    let handles = (0..num_clients)
-        .map(|_| {
-            let mut cache = cache_set.clone();
-            let ch = receive.clone();
+            let rb = Arc::clone(&report_builder);
 
             tokio::task::spawn(async move {
-                let mut report = Report::new("Moka Async Cache", max_cap, None);
-                process_commands_async(ch, &mut cache, &mut report).await;
+                let mut report = rb.build();
+                while let Ok(commands) = ch.recv() {
+                    cache::process_commands_async(commands, &mut cache, &mut report).await;
+                }
                 report
             })
         })
@@ -630,7 +291,7 @@ pub async fn run_multi_tasks(
         let f = File::open(config.trace_file.path())?;
         let reader = BufReader::new(f);
         for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-            let commands = generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
+            let commands = load_gen::generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
             send.send(commands)?;
         }
     }
@@ -643,14 +304,14 @@ pub async fn run_multi_tasks(
     let elapsed = instant.elapsed();
 
     // Merge the reports into one.
-    let mut report = Report::new("Moka Async Cache", max_cap, Some(num_clients));
+    let mut report = report_builder.build();
     report.duration = Some(elapsed);
     reports
         .iter()
         .for_each(|r| report.merge(r.as_ref().expect("Failed")));
 
-    if cfg!(any(feature = "moka-v09", feature = "moka-v010")) && config.is_eviction_listener_enabled() {
-        report.add_eviction_counts(cache_set.eviction_counters().as_ref().unwrap());
+    if config.is_eviction_listener_enabled() {
+        report.add_eviction_counts(cache_driver.eviction_counters().as_ref().unwrap());
     }
 
     Ok(report)

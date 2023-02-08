@@ -1,18 +1,20 @@
-use super::{CacheSet, Counters, DefaultHasher};
-use crate::{config::Config, parser::TraceEntry, report::Report};
-
 use std::sync::Arc;
+
+use super::{CacheDriver, Counters, DefaultHasher, Key, Value};
+use crate::{config::Config, parser::TraceEntry, report::Report};
 
 #[derive(Clone)]
 pub struct StrettoCache {
-    config: Config,
-    cache: ::stretto::Cache<
-        usize,
-        (u32, Arc<[u8]>),
-        ::stretto::DefaultKeyBuilder<usize>,
-        ::stretto::DefaultCoster<(u32, Arc<[u8]>)>,
-        ::stretto::DefaultUpdateValidator<(u32, Arc<[u8]>)>,
-        ::stretto::DefaultCacheCallback<(u32, Arc<[u8]>)>,
+    config: Arc<Config>,
+    // https://rust-lang.github.io/rust-clippy/master/index.html#type_complexity
+    #[allow(clippy::type_complexity)]
+    cache: stretto::Cache<
+        Key,
+        Value,
+        stretto::DefaultKeyBuilder<Key>,
+        stretto::DefaultCoster<Value>,
+        stretto::DefaultUpdateValidator<Value>,
+        stretto::DefaultCacheCallback<Value>,
         DefaultHasher,
     >,
 }
@@ -30,7 +32,7 @@ impl StrettoCache {
         }
 
         Self {
-            config: config.clone(),
+            config: Arc::new(config.clone()),
             cache: ::stretto::Cache::builder(capacity * 10, capacity as i64)
                 .set_hasher(DefaultHasher)
                 .finalize()
@@ -49,7 +51,7 @@ impl StrettoCache {
     }
 }
 
-impl CacheSet<TraceEntry> for StrettoCache {
+impl CacheDriver<TraceEntry> for StrettoCache {
     fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
@@ -83,21 +85,5 @@ impl CacheSet<TraceEntry> for StrettoCache {
         }
 
         counters.add_to_report(report);
-    }
-
-    fn invalidate(&mut self, _entry: &TraceEntry) {
-        unimplemented!();
-    }
-
-    fn invalidate_all(&mut self) {
-        unimplemented!();
-    }
-
-    fn invalidate_entries_if(&mut self, _entry: &TraceEntry) {
-        unimplemented!();
-    }
-
-    fn iterate(&mut self) {
-        unimplemented!();
     }
 }

@@ -45,7 +45,7 @@ For example:
 $ cargo build --release -F mini-moka,quick_cache
 
 ## Disable the latest version of Moka, but enable v0.9.x.
-$ cargo build --release --no-default-features -F moka-v090
+$ cargo build --release --no-default-features -F moka-v09
 ```
 
 | Feature       | Enabled Cache Product |
