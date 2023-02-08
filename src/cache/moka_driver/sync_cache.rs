@@ -1,42 +1,40 @@
-use super::{Counters, DefaultHasher, InitClosureType};
+use super::{InitClosureError1, InitClosureError2, InitClosureType};
+use crate::cache::{Key, Value};
+use crate::moka::sync::Cache;
 use crate::{
-    cache::{CacheSet, InitClosureError1, InitClosureError2},
+    cache::{self, CacheDriver, Counters, DefaultHasher},
     config::Config,
-    config::RemovalNotificationMode,
-    moka::sync::SegmentedCache,
     parser::TraceEntry,
     report::Report,
+    EvictionCounters,
 };
-
-#[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
-use crate::EvictionCounters;
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
 
-pub struct SegmentedMoka {
-    config: Config,
-    cache: SegmentedCache<usize, (u32, Arc<[u8]>), DefaultHasher>,
-    #[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
+pub struct MokaSyncCache {
+    config: Arc<Config>,
+    cache: Cache<Key, Value, DefaultHasher>,
     eviction_counters: Option<Arc<EvictionCounters>>,
 }
 
-impl Clone for SegmentedMoka {
+impl Clone for MokaSyncCache {
     fn clone(&self) -> Self {
         Self {
-            config: self.config.clone(),
+            config: Arc::clone(&self.config),
             cache: self.cache.clone(),
-            #[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
             eviction_counters: self.eviction_counters.as_ref().map(Arc::clone),
         }
     }
 }
 
-impl SegmentedMoka {
-    pub fn new(config: &Config, max_cap: u64, init_cap: usize, num_segments: usize) -> Self {
-        let mut builder = SegmentedCache::builder(num_segments)
+impl MokaSyncCache {
+    pub fn new(config: &Config, max_cap: u64, init_cap: usize) -> Self {
+        let config = Arc::new(config.clone());
+
+        let mut builder = Cache::builder()
             .max_capacity(max_cap)
             .initial_capacity(init_cap);
         if let Some(ttl) = config.ttl {
@@ -52,8 +50,18 @@ impl SegmentedMoka {
             builder = builder.weigher(|_k, (s, _v)| *s);
         }
 
-        #[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
+        #[cfg(feature = "moka-v08")]
         {
+            Self {
+                config,
+                cache: builder.build_with_hasher(DefaultHasher::default()),
+                eviction_counters: None,
+            }
+        }
+
+        #[cfg(not(feature = "moka-v08"))]
+        {
+            use crate::config::RemovalNotificationMode;
             use crate::moka::notification::{Configuration, DeliveryMode};
 
             let eviction_counters;
@@ -83,17 +91,9 @@ impl SegmentedMoka {
             }
 
             Self {
-                config: config.clone(),
+                config,
                 cache: builder.build_with_hasher(DefaultHasher::default()),
                 eviction_counters,
-            }
-        }
-
-        #[cfg(not(any(feature = "moka-v09", feature = "moka-v010")))]
-        {
-            Self {
-                config: config.clone(),
-                cache: builder.build_with_hasher(DefaultHasher::default()),
             }
         }
     }
@@ -103,16 +103,16 @@ impl SegmentedMoka {
     }
 
     fn insert(&self, key: usize, req_id: usize) {
-        let value = super::make_value(&self.config, key, req_id);
-        super::sleep_thread_for_insertion(&self.config);
+        let value = cache::make_value(&self.config, key, req_id);
+        cache::sleep_thread_for_insertion(&self.config);
         self.cache.insert(key, value);
     }
 
     fn get_with(&self, key: usize, req_id: usize, is_inserted: Arc<AtomicBool>) {
         self.cache.get_with(key, || {
-            super::sleep_thread_for_insertion(&self.config);
+            cache::sleep_thread_for_insertion(&self.config);
             is_inserted.store(true, Ordering::Release);
-            super::make_value(&self.config, key, req_id)
+            cache::make_value(&self.config, key, req_id)
         });
     }
 
@@ -127,17 +127,17 @@ impl SegmentedMoka {
             InitClosureType::GetOrTryInsertWithError1 => self
                 .cache
                 .try_get_with(key, || {
-                    super::sleep_thread_for_insertion(&self.config);
+                    cache::sleep_thread_for_insertion(&self.config);
                     is_inserted.store(true, Ordering::Release);
-                    Ok(super::make_value(&self.config, key, req_id)) as Result<_, InitClosureError1>
+                    Ok(cache::make_value(&self.config, key, req_id)) as Result<_, InitClosureError1>
                 })
                 .is_ok(),
             InitClosureType::GetOrTyyInsertWithError2 => self
                 .cache
                 .try_get_with(key, || {
-                    super::sleep_thread_for_insertion(&self.config);
+                    cache::sleep_thread_for_insertion(&self.config);
                     is_inserted.store(true, Ordering::Release);
-                    Ok(super::make_value(&self.config, key, req_id)) as Result<_, InitClosureError2>
+                    Ok(cache::make_value(&self.config, key, req_id)) as Result<_, InitClosureError2>
                 })
                 .is_ok(),
             _ => unreachable!(),
@@ -145,7 +145,7 @@ impl SegmentedMoka {
     }
 }
 
-impl CacheSet<TraceEntry> for SegmentedMoka {
+impl CacheDriver<TraceEntry> for MokaSyncCache {
     fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
@@ -232,53 +232,8 @@ impl CacheSet<TraceEntry> for SegmentedMoka {
             }
         }
     }
-}
 
-pub struct SharedSegmentedMoka(SegmentedMoka);
-
-impl SharedSegmentedMoka {
-    pub fn new(config: &Config, max_cap: u64, init_cap: usize, num_segments: usize) -> Self {
-        Self(SegmentedMoka::new(config, max_cap, init_cap, num_segments))
-    }
-
-    #[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
-    pub(crate) fn eviction_counters(&self) -> Option<Arc<EvictionCounters>> {
-        self.0.eviction_counters.as_ref().map(Arc::clone)
-    }
-}
-
-impl Clone for SharedSegmentedMoka {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-impl CacheSet<TraceEntry> for SharedSegmentedMoka {
-    fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
-        self.0.get_or_insert(entry, report)
-    }
-
-    fn get_or_insert_once(&mut self, entry: &TraceEntry, report: &mut Report) {
-        self.0.get_or_insert_once(entry, report);
-    }
-
-    fn update(&mut self, entry: &TraceEntry, report: &mut Report) {
-        self.0.update(entry, report);
-    }
-
-    fn invalidate(&mut self, entry: &TraceEntry) {
-        self.0.invalidate(entry);
-    }
-
-    fn invalidate_all(&mut self) {
-        self.0.invalidate_all();
-    }
-
-    fn invalidate_entries_if(&mut self, entry: &TraceEntry) {
-        self.0.invalidate_entries_if(entry);
-    }
-
-    fn iterate(&mut self) {
-        self.0.iterate();
+    fn eviction_counters(&self) -> Option<Arc<EvictionCounters>> {
+        self.eviction_counters.as_ref().map(Arc::clone)
     }
 }

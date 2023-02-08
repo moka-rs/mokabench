@@ -1,15 +1,17 @@
 use hashlink::LruCache;
 use parking_lot::Mutex;
 
-use super::{CacheSet, Counters, DefaultHasher};
+use super::{CacheDriver, Counters, DefaultHasher, Key, Value};
 use crate::{config::Config, parser::TraceEntry, report::Report};
 
 use std::sync::Arc;
 
+type HashLinkCache = LruCache<Key, Value, DefaultHasher>;
+
 #[derive(Clone)]
 pub struct HashLink {
-    config: Config,
-    cache: Arc<Mutex<hashlink::LruCache<usize, (u32, Arc<[u8]>), DefaultHasher>>>,
+    config: Arc<Config>,
+    cache: Arc<Mutex<HashLinkCache>>,
 }
 
 impl HashLink {
@@ -25,7 +27,7 @@ impl HashLink {
         }
 
         Self {
-            config: config.clone(),
+            config: Arc::new(config.clone()),
             cache: Arc::new(Mutex::new(LruCache::with_hasher(
                 capacity,
                 DefaultHasher::default(),
@@ -44,7 +46,7 @@ impl HashLink {
     }
 }
 
-impl CacheSet<TraceEntry> for HashLink {
+impl CacheDriver<TraceEntry> for HashLink {
     fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
@@ -78,21 +80,5 @@ impl CacheSet<TraceEntry> for HashLink {
         }
 
         counters.add_to_report(report);
-    }
-
-    fn invalidate(&mut self, _entry: &TraceEntry) {
-        unimplemented!();
-    }
-
-    fn invalidate_all(&mut self) {
-        unimplemented!();
-    }
-
-    fn invalidate_entries_if(&mut self, _entry: &TraceEntry) {
-        unimplemented!();
-    }
-
-    fn iterate(&mut self) {
-        unimplemented!();
     }
 }

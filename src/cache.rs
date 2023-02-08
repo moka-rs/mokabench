@@ -3,37 +3,58 @@ use std::{
     sync::Arc,
 };
 
-use crate::{config::Config, Report};
+use crate::{
+    config::Config,
+    eviction_counters::EvictionCounters,
+    parser::{self, TraceEntry, TraceParser},
+    Command, Report,
+};
 
 use async_trait::async_trait;
-use thiserror::Error;
 
-pub(crate) mod async_cache;
-#[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
-pub(crate) mod dash_cache;
 #[cfg(feature = "hashlink")]
 pub(crate) mod hashlink;
+#[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
+pub(crate) mod mini_moka_driver;
+pub(crate) mod moka_driver;
 #[cfg(feature = "quick_cache")]
 pub(crate) mod quick_cache;
 #[cfg(feature = "stretto")]
 pub(crate) mod stretto;
-pub(crate) mod sync_cache;
-pub(crate) mod sync_segmented;
-#[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
-pub(crate) mod unsync_cache;
 
-pub trait CacheSet<T> {
+pub(crate) type Key = usize;
+pub(crate) type Value = (u32, Arc<[u8]>);
+
+pub(crate) trait CacheDriver<T> {
     fn get_or_insert(&mut self, entry: &T, report: &mut Report);
     fn get_or_insert_once(&mut self, entry: &T, report: &mut Report);
     fn update(&mut self, entry: &T, report: &mut Report);
-    fn invalidate(&mut self, entry: &T);
-    fn invalidate_all(&mut self);
-    fn invalidate_entries_if(&mut self, entry: &T);
-    fn iterate(&mut self);
+
+    #[allow(unused_variables)]
+    fn invalidate(&mut self, entry: &T) {
+        unimplemented!();
+    }
+
+    fn invalidate_all(&mut self) {
+        unimplemented!();
+    }
+
+    #[allow(unused_variables)]
+    fn invalidate_entries_if(&mut self, entry: &T) {
+        unimplemented!();
+    }
+
+    fn iterate(&mut self) {
+        unimplemented!();
+    }
+
+    fn eviction_counters(&self) -> Option<Arc<EvictionCounters>> {
+        None
+    }
 }
 
 #[async_trait]
-pub trait AsyncCacheSet<T> {
+pub(crate) trait AsyncCacheDriver<T> {
     async fn get_or_insert(&mut self, entry: &T, report: &mut Report);
     async fn get_or_insert_once(&mut self, entry: &T, report: &mut Report);
     async fn update(&mut self, entry: &T, report: &mut Report);
@@ -41,6 +62,85 @@ pub trait AsyncCacheSet<T> {
     fn invalidate_all(&mut self);
     fn invalidate_entries_if(&mut self, entry: &T);
     async fn iterate(&mut self);
+    fn eviction_counters(&self) -> Option<Arc<EvictionCounters>>;
+}
+
+pub(crate) fn process_commands(
+    commands: Vec<Command>,
+    cache: &mut impl CacheDriver<TraceEntry>,
+    report: &mut Report,
+) {
+    let mut parser = parser::GenericTraceParser;
+    for command in commands {
+        match command {
+            Command::GetOrInsert(line, line_number) => {
+                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
+                    cache.get_or_insert(&entry, report);
+                }
+            }
+            Command::GetOrInsertOnce(line, line_number) => {
+                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
+                    cache.get_or_insert_once(&entry, report);
+                }
+            }
+            Command::Update(line, line_number) => {
+                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
+                    cache.update(&entry, report);
+                }
+            }
+            Command::Invalidate(line, line_number) => {
+                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
+                    cache.invalidate(&entry);
+                }
+            }
+            Command::InvalidateAll => cache.invalidate_all(),
+            Command::InvalidateEntriesIf(line, line_number) => {
+                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
+                    cache.invalidate_entries_if(&entry);
+                }
+            }
+            Command::Iterate => cache.iterate(),
+        }
+    }
+}
+
+pub(crate) async fn process_commands_async(
+    commands: Vec<Command>,
+    cache: &mut impl AsyncCacheDriver<TraceEntry>,
+    report: &mut Report,
+) {
+    let mut parser = parser::GenericTraceParser;
+    for command in commands {
+        match command {
+            Command::GetOrInsert(line, line_number) => {
+                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
+                    cache.get_or_insert(&entry, report).await;
+                }
+            }
+            Command::GetOrInsertOnce(line, line_number) => {
+                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
+                    cache.get_or_insert_once(&entry, report).await;
+                }
+            }
+            Command::Update(line, line_number) => {
+                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
+                    cache.update(&entry, report).await;
+                }
+            }
+            Command::Invalidate(line, line_number) => {
+                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
+                    cache.invalidate(&entry).await;
+                }
+            }
+            Command::InvalidateAll => cache.invalidate_all(),
+            Command::InvalidateEntriesIf(line, line_number) => {
+                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
+                    cache.invalidate_entries_if(&entry);
+                }
+            }
+            Command::Iterate => cache.iterate().await,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -73,7 +173,7 @@ impl Counters {
 
 const VALUE_LEN: usize = 128;
 
-pub(crate) fn make_value(config: &Config, key: usize, req_id: usize) -> (u32, Arc<[u8]>) {
+pub(crate) fn make_value(config: &Config, key: usize, req_id: usize) -> Value {
     let policy_weight = if config.size_aware {
         let mut hasher = DefaultHasher::default().build_hasher();
         req_id.hash(&mut hasher);
@@ -110,8 +210,9 @@ pub(crate) struct DefaultHasher;
 
 impl BuildHasher for DefaultHasher {
     // Picking a fast but also good algorithm by default to avoids weird scenarios in
-    // some implementations (e.g. poor hashbrown performance, poor bloom filter accuracy).
-    // Algorithms like FNV have poor quality in the low bits when hashing small keys.
+    // some implementations (e.g. poor hashbrown performance, poor bloom filter
+    // accuracy). Algorithms like FNV have poor quality in the low bits when hashing
+    // small keys.
     type Hasher = xxhash_rust::xxh3::Xxh3;
 
     fn build_hasher(&self) -> Self::Hasher {
@@ -120,30 +221,3 @@ impl BuildHasher for DefaultHasher {
             .build()
     }
 }
-
-// https://rust-lang.github.io/rust-clippy/master/index.html#enum_variant_names
-#[allow(clippy::enum_variant_names)]
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum InitClosureType {
-    GetOrInsert,
-    GetOrTryInsertWithError1,
-    GetOrTyyInsertWithError2,
-}
-
-impl InitClosureType {
-    pub(crate) fn select(block: usize) -> Self {
-        match block % 4 {
-            0 => Self::GetOrTryInsertWithError1,
-            1 => Self::GetOrTyyInsertWithError2,
-            _ => Self::GetOrInsert,
-        }
-    }
-}
-
-#[derive(Debug, Error)]
-#[error("init closure failed with error one")]
-pub(crate) struct InitClosureError1;
-
-#[derive(Debug, Error)]
-#[error("init closure failed with error two")]
-pub(crate) struct InitClosureError2;

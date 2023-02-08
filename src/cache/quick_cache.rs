@@ -1,12 +1,14 @@
-use super::{CacheSet, Counters, DefaultHasher};
+use super::{CacheDriver, Counters, DefaultHasher, Key, Value};
 use crate::{config::Config, parser::TraceEntry, report::Report};
 
 use std::sync::Arc;
 
+type QuickCacheImpl = quick_cache::sync::Cache<Key, Value, DefaultHasher>;
+
 #[derive(Clone)]
 pub struct QuickCache {
-    config: Config,
-    cache: Arc<::quick_cache::sync::Cache<usize, (u32, Arc<[u8]>), DefaultHasher>>,
+    config: Arc<Config>,
+    cache: Arc<QuickCacheImpl>,
 }
 
 impl QuickCache {
@@ -22,7 +24,7 @@ impl QuickCache {
         }
 
         Self {
-            config: config.clone(),
+            config: Arc::new(config.clone()),
             cache: ::quick_cache::sync::Cache::with_hasher(
                 capacity,
                 capacity,
@@ -43,7 +45,7 @@ impl QuickCache {
     }
 }
 
-impl CacheSet<TraceEntry> for QuickCache {
+impl CacheDriver<TraceEntry> for QuickCache {
     fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
@@ -77,21 +79,5 @@ impl CacheSet<TraceEntry> for QuickCache {
         }
 
         counters.add_to_report(report);
-    }
-
-    fn invalidate(&mut self, _entry: &TraceEntry) {
-        unimplemented!();
-    }
-
-    fn invalidate_all(&mut self) {
-        unimplemented!();
-    }
-
-    fn invalidate_entries_if(&mut self, _entry: &TraceEntry) {
-        unimplemented!();
-    }
-
-    fn iterate(&mut self) {
-        unimplemented!();
     }
 }

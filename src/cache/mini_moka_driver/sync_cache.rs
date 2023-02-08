@@ -1,5 +1,7 @@
-use super::{CacheSet, Counters, DefaultHasher};
+use std::sync::Arc;
+
 use crate::{
+    cache::{self, CacheDriver, Counters, DefaultHasher, Key, Value},
     config::Config,
     parser::TraceEntry,
     report::Report,
@@ -8,26 +10,19 @@ use crate::{
 #[cfg(feature = "mini-moka")]
 use mini_moka::sync::Cache;
 
-#[cfg(all(not(feature = "mini-moka"), any(feature = "moka-v09", feature = "moka-v08")))]
+#[cfg(all(
+    not(feature = "mini-moka"),
+    any(feature = "moka-v09", feature = "moka-v08")
+))]
 use crate::moka::dash::Cache;
 
-use std::sync::Arc;
-
-pub struct DashCache {
-    config: Config,
-    cache: Cache<usize, (u32, Arc<[u8]>), DefaultHasher>,
+#[derive(Clone)]
+pub struct MiniMokSyncCache {
+    config: Arc<Config>,
+    cache: Cache<Key, Value, DefaultHasher>,
 }
 
-impl Clone for DashCache {
-    fn clone(&self) -> Self {
-        Self {
-            config: self.config.clone(),
-            cache: self.cache.clone(),
-        }
-    }
-}
-
-impl DashCache {
+impl MiniMokSyncCache {
     pub fn new(config: &Config, max_cap: u64, init_cap: usize) -> Self {
         let mut builder = Cache::builder()
             .max_capacity(max_cap)
@@ -43,7 +38,7 @@ impl DashCache {
         }
 
         Self {
-            config: config.clone(),
+            config: Arc::new(config.clone()),
             cache: builder.build_with_hasher(DefaultHasher::default()),
         }
     }
@@ -53,13 +48,13 @@ impl DashCache {
     }
 
     fn insert(&self, key: usize, req_id: usize) {
-        let value = super::make_value(&self.config, key, req_id);
-        super::sleep_thread_for_insertion(&self.config);
+        let value = cache::make_value(&self.config, key, req_id);
+        cache::sleep_thread_for_insertion(&self.config);
         self.cache.insert(key, value);
     }
 }
 
-impl CacheSet<TraceEntry> for DashCache {
+impl CacheDriver<TraceEntry> for MiniMokSyncCache {
     fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
@@ -105,18 +100,6 @@ impl CacheSet<TraceEntry> for DashCache {
         self.cache.invalidate_all();
     }
 
-    fn invalidate_entries_if(&mut self, _entry: &TraceEntry) {
-        unimplemented!();
-    }
-
-    // fn invalidate_entries_if(&mut self, entry: &TraceEntry) {
-    //     for block in entry.range() {
-    //         self.cache
-    //             .invalidate_entries_if(move |_k, (_s, v)| v[0] == (block % 256) as u8)
-    //             .expect("invalidate_entries_if failed");
-    //     }
-    // }
-
     fn iterate(&mut self) {
         let mut count = 0usize;
         for entry in &self.cache {
@@ -127,52 +110,5 @@ impl CacheSet<TraceEntry> for DashCache {
                 std::thread::yield_now();
             }
         }
-    }
-}
-
-pub struct SharedDashCache(DashCache);
-
-impl SharedDashCache {
-    pub fn new(config: &Config, max_cap: u64, init_cap: usize) -> Self {
-        Self(DashCache::new(config, max_cap, init_cap))
-    }
-}
-
-impl Clone for SharedDashCache {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-impl CacheSet<TraceEntry> for SharedDashCache {
-    fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
-        self.0.get_or_insert(entry, report);
-    }
-
-    fn get_or_insert_once(&mut self, entry: &TraceEntry, report: &mut Report) {
-        // self.0.get_or_insert_once(entry, report);
-        self.0.get_or_insert(entry, report);
-    }
-
-    fn update(&mut self, entry: &TraceEntry, report: &mut Report) {
-        self.0.update(entry, report);
-    }
-
-    fn invalidate(&mut self, entry: &TraceEntry) {
-        self.0.invalidate(entry);
-    }
-
-    fn invalidate_all(&mut self) {
-        self.0.invalidate_all();
-    }
-
-    fn invalidate_entries_if(&mut self, _entry: &TraceEntry) {
-        // DO NOTHING FOR NOW.
-
-        // self.0.invalidate_entries_if(entry);
-    }
-
-    fn iterate(&mut self) {
-        self.0.iterate();
     }
 }
