@@ -73,8 +73,15 @@ pub fn run_multi_threads_moka_sync(
     } else {
         capacity as u64
     };
-    let cache_driver = MokaSyncCache::new(config, max_cap, capacity);
     let report_builder = ReportBuilder::new("Moka Sync Cache", max_cap, Some(num_clients));
+
+    #[cfg(not(any(feature = "moka-v08", feature = "moka-v09")))]
+    if config.entry_api {
+        let cache_driver = MokaSyncCache::with_entry_api(config, max_cap, capacity);
+        return run_multi_threads(config, num_clients, cache_driver, report_builder);
+    }
+
+    let cache_driver = MokaSyncCache::new(config, max_cap, capacity);
     run_multi_threads(config, num_clients, cache_driver, report_builder)
 }
 
@@ -89,9 +96,17 @@ pub fn run_multi_threads_moka_segment(
     } else {
         capacity as u64
     };
-    let cache_driver = MokaSegmentedCache::new(config, max_cap, capacity, num_segments);
     let report_name = format!("Moka SegmentedCache({num_segments})");
     let report_builder = ReportBuilder::new(&report_name, max_cap, Some(num_clients));
+
+    #[cfg(not(any(feature = "moka-v08", feature = "moka-v09")))]
+    if config.entry_api {
+        let cache_driver =
+            MokaSegmentedCache::with_entry_api(config, max_cap, capacity, num_segments);
+        return run_multi_threads(config, num_clients, cache_driver, report_builder);
+    }
+
+    let cache_driver = MokaSegmentedCache::new(config, max_cap, capacity, num_segments);
     run_multi_threads(config, num_clients, cache_driver, report_builder)
 }
 
@@ -105,8 +120,15 @@ pub async fn run_multi_tasks_moka_async(
     } else {
         capacity as u64
     };
-    let cache_driver = MokaAsyncCache::new(config, max_cap, capacity);
     let report_builder = ReportBuilder::new("Moka Async Cache", max_cap, Some(num_clients));
+
+    #[cfg(not(any(feature = "moka-v08", feature = "moka-v09")))]
+    if config.entry_api {
+        let cache_driver = MokaAsyncCache::with_entry_api(config, max_cap, capacity);
+        return run_multi_tasks(config, num_clients, cache_driver, report_builder).await;
+    }
+
+    let cache_driver = MokaAsyncCache::new(config, max_cap, capacity);
     run_multi_tasks(config, num_clients, cache_driver, report_builder).await
 }
 
