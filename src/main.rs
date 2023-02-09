@@ -290,8 +290,8 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
         RemovalNotificationMode::None
     };
 
-    if cfg!(not(any(feature = "moka-v08", feature = "moka-v08"))) && !entry_api {
-        eprintln!("\nWARNING: Testing Moka's entry API is disabled by default. Use --entry-api to enable it\n");
+    if !entry_api && insert_once && cfg!(not(any(feature = "moka-v08", feature = "moka-v09"))) {
+        eprintln!("\nWARNING: Testing Moka's entry API is disabled by default. Use --entry-api to enable it.\n");
     }
 
     let config = Config::new(
