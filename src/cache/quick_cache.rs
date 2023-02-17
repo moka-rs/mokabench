@@ -1,9 +1,11 @@
 use super::{CacheDriver, Counters, DefaultHasher, Key, Value};
 use crate::{config::Config, parser::TraceEntry, report::Report};
 
+use ::quick_cache::OptionsBuilder;
+
 use std::sync::Arc;
 
-type QuickCacheImpl = quick_cache::sync::Cache<Key, Value, DefaultHasher>;
+type QuickCacheImpl = ::quick_cache::sync::Cache<Key, Value, CustomWeighter, DefaultHasher>;
 
 #[derive(Clone)]
 pub struct QuickCache {
@@ -11,23 +13,39 @@ pub struct QuickCache {
     cache: Arc<QuickCacheImpl>,
 }
 
+#[derive(Clone)]
+struct CustomWeighter(bool);
+
+impl ::quick_cache::Weighter<usize, (), (u32, Arc<[u8]>)> for CustomWeighter {
+    fn weight(&self, _key: &usize, _version: &(), val: &(u32, Arc<[u8]>)) -> std::num::NonZeroU32 {
+        if self.0 {
+            std::num::NonZeroU32::new(val.0).unwrap()
+        } else {
+            std::num::NonZeroU32::new(1).unwrap()
+        }
+    }
+}
+
 impl QuickCache {
-    pub fn new(config: &Config, capacity: usize) -> Self {
+    pub fn new(config: &Config, estimated_items_capacity: usize, capacity: u64) -> Self {
         if let Some(_ttl) = config.ttl {
             todo!()
         }
         if let Some(_tti) = config.tti {
             todo!()
         }
-        if config.size_aware {
-            todo!()
-        }
+
+        let options = OptionsBuilder::new()
+            .estimated_items_capacity(estimated_items_capacity)
+            .weight_capacity(capacity)
+            .build()
+            .unwrap();
 
         Self {
             config: Arc::new(config.clone()),
-            cache: ::quick_cache::sync::Cache::with_hasher(
-                capacity,
-                capacity,
+            cache: ::quick_cache::sync::Cache::with_options(
+                options,
+                CustomWeighter(config.size_aware),
                 DefaultHasher::default(),
             )
             .into(),
