@@ -54,12 +54,12 @@ use crate::cache::stretto::StrettoCache;
 const BATCH_SIZE: usize = 200;
 
 pub(crate) enum Command {
-    GetOrInsert(String, usize),
-    GetOrInsertOnce(String, usize),
-    Update(String, usize),
-    Invalidate(String, usize),
+    GetOrInsert(TraceEntry),
+    GetOrInsertOnce(TraceEntry),
+    Update(TraceEntry),
+    Invalidate(TraceEntry),
     InvalidateAll,
-    InvalidateEntriesIf(String, usize),
+    InvalidateEntriesIf(TraceEntry),
     Iterate,
 }
 
@@ -160,7 +160,8 @@ pub fn run_multi_threads_hashlink(
     num_clients: u16,
 ) -> anyhow::Result<Report> {
     let cache_driver = HashLink::new(config, capacity);
-    let report_builder = ReportBuilder::new("HashLink", capacity as _, Some(num_clients));
+    let report_builder =
+        ReportBuilder::new("HashLink (LRU w/ Mutex)", capacity as _, Some(num_clients));
     run_multi_threads(config, num_clients, cache_driver, report_builder)
 }
 
@@ -171,8 +172,14 @@ pub fn run_multi_threads_quick_cache(
     capacity: usize,
     num_clients: u16,
 ) -> anyhow::Result<Report> {
-    let cache_driver = QuickCache::new(config, capacity);
-    let report_builder = ReportBuilder::new("QuickCache", capacity as _, Some(num_clients));
+    let max_cap = if config.size_aware {
+        capacity as u64 * 2u64.pow(15)
+    } else {
+        capacity as u64
+    };
+    let cache_driver = QuickCache::new(config, capacity, max_cap);
+    let report_builder =
+        ReportBuilder::new("QuickCache Sync Cache", capacity as _, Some(num_clients));
     run_multi_threads(config, num_clients, cache_driver, report_builder)
 }
 
@@ -203,18 +210,23 @@ pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
     let mut report = Report::new(name, max_cap, Some(1));
     let mut counter = 0;
 
-    let instant = Instant::now();
-
+    // pre-process all commands to reduce benchmark harness influence.
+    let mut all_commands = Vec::new();
     for _ in 0..(config.repeat.unwrap_or(1)) {
         let f = File::open(config.trace_file.path())?;
         let reader = BufReader::new(f);
 
-        for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
+        for chunk in reader.lines().enumerate().chunks(BATCH_SIZE).into_iter() {
+            let chunk = chunk.map(|(i, r)| r.map(|s| (i, s)));
             let commands = load_gen::generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
-            cache::process_commands(commands, &mut cache_driver, &mut report);
+            all_commands.push(commands);
         }
     }
 
+    let instant = Instant::now();
+    for commands in all_commands {
+        cache::process_commands(commands, &mut cache_driver, &mut report);
+    }
     let elapsed = instant.elapsed();
     report.duration = Some(elapsed);
 
@@ -229,8 +241,25 @@ fn run_multi_threads(
     report_builder: ReportBuilder,
 ) -> anyhow::Result<Report> {
     let report_builder = Arc::new(report_builder);
-    let (send, receive) = crossbeam_channel::bounded::<Vec<Command>>(100);
+    let (send, receive) = crossbeam_channel::unbounded::<Vec<Command>>();
 
+    // In order to have the minimum harness overhead and not have many consumers
+    // waiting for the single producer, we buffer all operations in a channel.
+    let mut counter = 0;
+    for _ in 0..(config.repeat.unwrap_or(1)) {
+        let f = File::open(config.trace_file.path())?;
+        let reader = BufReader::new(f);
+        for chunk in reader.lines().enumerate().chunks(BATCH_SIZE).into_iter() {
+            let chunk = chunk.map(|(i, r)| r.map(|s| (i, s)));
+            let commands = load_gen::generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
+            send.send(commands)?;
+        }
+    }
+
+    // Drop the sender channel to notify the workers that we are finished.
+    std::mem::drop(send);
+
+    let instant = Instant::now();
     let handles = (0..num_clients)
         .map(|_| {
             let mut cache = cache_driver.clone();
@@ -246,21 +275,6 @@ fn run_multi_threads(
             })
         })
         .collect::<Vec<_>>();
-
-    let mut counter = 0;
-    let instant = Instant::now();
-
-    for _ in 0..(config.repeat.unwrap_or(1)) {
-        let f = File::open(config.trace_file.path())?;
-        let reader = BufReader::new(f);
-        for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-            let commands = load_gen::generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
-            send.send(commands)?;
-        }
-    }
-
-    // Drop the sender channel to notify the workers that we are finished.
-    std::mem::drop(send);
 
     // Wait for the workers to finish and collect their reports.
     let reports = handles
@@ -288,8 +302,25 @@ async fn run_multi_tasks(
     report_builder: ReportBuilder,
 ) -> anyhow::Result<Report> {
     let report_builder = Arc::new(report_builder);
-    let (send, receive) = crossbeam_channel::bounded::<Vec<Command>>(100);
+    let (send, receive) = crossbeam_channel::unbounded::<Vec<Command>>();
 
+    // In order to have the minimum harness overhead and not have many consumers
+    // waiting for the single producer, we buffer all operations in a channel.
+    let mut counter = 0;
+    for _ in 0..(config.repeat.unwrap_or(1)) {
+        let f = File::open(config.trace_file.path())?;
+        let reader = BufReader::new(f);
+        for chunk in reader.lines().enumerate().chunks(BATCH_SIZE).into_iter() {
+            let chunk = chunk.map(|(i, r)| r.map(|s| (i, s)));
+            let commands = load_gen::generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
+            send.send(commands)?;
+        }
+    }
+
+    // Drop the sender channel to notify the workers that we are finished.
+    std::mem::drop(send);
+
+    let instant = Instant::now();
     let handles = (0..num_clients)
         .map(|_| {
             let mut cache = cache_driver.clone();
@@ -305,21 +336,6 @@ async fn run_multi_tasks(
             })
         })
         .collect::<Vec<_>>();
-
-    let mut counter = 0;
-    let instant = Instant::now();
-
-    for _ in 0..(config.repeat.unwrap_or(1)) {
-        let f = File::open(config.trace_file.path())?;
-        let reader = BufReader::new(f);
-        for chunk in reader.lines().chunks(BATCH_SIZE).into_iter() {
-            let commands = load_gen::generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
-            send.send(commands)?;
-        }
-    }
-
-    // Drop the sender channel to notify the workers that we are finished.
-    std::mem::drop(send);
 
     // Wait for the workers to finish and collect their reports.
     let reports = futures_util::future::join_all(handles).await;
