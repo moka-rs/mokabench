@@ -34,7 +34,7 @@ tokio = { version = "1.25.0", features = ["rt-multi-thread", "macros" ] }
 # Cache implementations
 hashlink = { optional = true, version = "0.8.1" }
 mini-moka = { optional = true, version = "0.10.0" }
-quick_cache = { optional = true, version = "0.1.0" }
+quick_cache = { optional = true, version = "0.2.1" }
 stretto = { optional = true, version = "0.7.1" }
 
 [dependencies.moka010]
@@ -57,7 +57,7 @@ optional = true
 version = "0.8.6"
 features = ["future", "dash"]
 
-[profile.release]
-debug=true
+# [profile.release]
+# debug=true
 # debug-assertions=true
 # overflow-checks = true
