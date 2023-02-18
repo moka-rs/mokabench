@@ -4,10 +4,7 @@ use std::{
 };
 
 use crate::{
-    config::Config,
-    eviction_counters::EvictionCounters,
-    parser::{self, TraceEntry, TraceParser},
-    Command, Report,
+    config::Config, eviction_counters::EvictionCounters, parser::TraceEntry, Command, Report,
 };
 
 use async_trait::async_trait;
@@ -70,34 +67,23 @@ pub(crate) fn process_commands(
     cache: &mut impl CacheDriver<TraceEntry>,
     report: &mut Report,
 ) {
-    let mut parser = parser::GenericTraceParser;
     for command in commands {
         match command {
-            Command::GetOrInsert(line, line_number) => {
-                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                    cache.get_or_insert(&entry, report);
-                }
+            Command::GetOrInsert(entry) => {
+                cache.get_or_insert(&entry, report);
             }
-            Command::GetOrInsertOnce(line, line_number) => {
-                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                    cache.get_or_insert_once(&entry, report);
-                }
+            Command::GetOrInsertOnce(entry) => {
+                cache.get_or_insert_once(&entry, report);
             }
-            Command::Update(line, line_number) => {
-                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                    cache.update(&entry, report);
-                }
+            Command::Update(entry) => {
+                cache.update(&entry, report);
             }
-            Command::Invalidate(line, line_number) => {
-                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                    cache.invalidate(&entry);
-                }
+            Command::Invalidate(entry) => {
+                cache.invalidate(&entry);
             }
             Command::InvalidateAll => cache.invalidate_all(),
-            Command::InvalidateEntriesIf(line, line_number) => {
-                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                    cache.invalidate_entries_if(&entry);
-                }
+            Command::InvalidateEntriesIf(entry) => {
+                cache.invalidate_entries_if(&entry);
             }
             Command::Iterate => cache.iterate(),
         }
@@ -109,34 +95,23 @@ pub(crate) async fn process_commands_async(
     cache: &mut impl AsyncCacheDriver<TraceEntry>,
     report: &mut Report,
 ) {
-    let mut parser = parser::GenericTraceParser;
     for command in commands {
         match command {
-            Command::GetOrInsert(line, line_number) => {
-                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                    cache.get_or_insert(&entry, report).await;
-                }
+            Command::GetOrInsert(entry) => {
+                cache.get_or_insert(&entry, report).await;
             }
-            Command::GetOrInsertOnce(line, line_number) => {
-                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                    cache.get_or_insert_once(&entry, report).await;
-                }
+            Command::GetOrInsertOnce(entry) => {
+                cache.get_or_insert_once(&entry, report).await;
             }
-            Command::Update(line, line_number) => {
-                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                    cache.update(&entry, report).await;
-                }
+            Command::Update(entry) => {
+                cache.update(&entry, report).await;
             }
-            Command::Invalidate(line, line_number) => {
-                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                    cache.invalidate(&entry).await;
-                }
+            Command::Invalidate(entry) => {
+                cache.invalidate(&entry).await;
             }
             Command::InvalidateAll => cache.invalidate_all(),
-            Command::InvalidateEntriesIf(line, line_number) => {
-                if let Some(entry) = parser.parse(&line, line_number).unwrap() {
-                    cache.invalidate_entries_if(&entry);
-                }
+            Command::InvalidateEntriesIf(entry) => {
+                cache.invalidate_entries_if(&entry);
             }
             Command::Iterate => cache.iterate().await,
         }
