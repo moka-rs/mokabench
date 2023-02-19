@@ -166,7 +166,6 @@ pub fn run_multi_threads_hashlink(
 }
 
 #[cfg(feature = "quick_cache")]
-#[allow(clippy::needless_collect)] // on the `handles` variable.
 pub fn run_multi_threads_quick_cache(
     config: &Config,
     capacity: usize,
@@ -184,7 +183,6 @@ pub fn run_multi_threads_quick_cache(
 }
 
 #[cfg(feature = "stretto")]
-#[allow(clippy::needless_collect)] // on the `handles` variable.
 pub fn run_multi_threads_stretto(
     config: &Config,
     capacity: usize,
