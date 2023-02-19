@@ -50,10 +50,10 @@ $ cargo build --release --no-default-features -F moka-v09
 
 | Feature       | Enabled Cache Product |
 |:--------------|:----------------------|
-| `moka-v010`   | [Moka](https://crates.io/crates/moka) v0.10.x |
+| `moka-v010`   | [Moka](https://crates.io/crates/moka) v0.10.x (Enabled by default) |
 | `moka-v09`    |  Moka v0.9.x |
 | `moka-v08`    |  Moka v0.8.x |
-| `hashlink`    | [hashlink](https://crates.io/crates/hashlink) |
+| `hashlink`    | [HashLink](https://crates.io/crates/hashlink) |
 | `mini-moka`   | [Mini-Moka](https://crates.io/crates/mini-moka) |
 | `quick_cache` | [quick_cache](https://crates.io/crates/quick_cache) |
 | `stretto`     | [Stretto](https://crates.io/crates/stretto) |
@@ -65,10 +65,30 @@ NOTES:
 - `mini-moka` cannot be enabled when `moka-v09` or `moka-v08` is enabled.
 
 
-
 ### Run Benchmarks
 
-Run the benchmarks with the following commands:
+Here are some examples to run benchmarks:
+
+```console
+## Run with the default (S3.lis) dataset, using single client thread,
+## and then 3 client threads, and so on.
+$ ./target/release/mokabench --num-clients 1,3,6
+
+## Run with DS1.lis dataset.
+$ ./target/release/mokabench --num-clients 1,3,6 --trace-file ds1
+
+## Run with an insertion delay (in microseconds) to simulate more
+## realistic workload. The following example will try to add ~1
+## microseconds delay before inserting a value to the cache.
+##
+## Note: It uses `std::thread::sleep` and many operating systems
+## have a minimum sleep resolution larger than 1 microsecond. So
+## the actual delay may be larger than the specified value.
+##
+$ ./target/release/mokabench --num-clients 1,3,6 --insertion-delay 1
+```
+
+You can also test Moka's advanced features/APIs:
 
 ```console
 ## Call `get` and `insert` with time-to-live = 3 seconds and
