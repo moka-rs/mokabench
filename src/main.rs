@@ -93,10 +93,6 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
         }
     }
 
-    if capacity >= 2_000_000 {
-        return Ok(());
-    }
-
     for num_clients in num_clients_slice {
         let report = mokabench::run_multi_threads_moka_sync(config, capacity, *num_clients)?;
         println!("{}", report.to_csv_record());
