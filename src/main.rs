@@ -135,12 +135,17 @@ const OPTION_INVALIDATE: &str = "invalidate";
 const OPTION_INVALIDATE_ALL: &str = "invalidate-all";
 const OPTION_INVALIDATE_IF: &str = "invalidate-entries-if";
 const OPTION_ITERATE: &str = "iterate";
-const OPTION_ENTRY_API: &str = "entry-api";
-const OPTION_REPEAT: &str = "repeat";
 const OPTION_SIZE_AWARE: &str = "size-aware";
+const OPTION_REPEAT: &str = "repeat";
 
 // Since Moka v0.9.0
 const OPTION_EVICTION_LISTENER: &str = "eviction-listener";
+
+// Since Moka v0.10.0
+const OPTION_ENTRY_API: &str = "entry-api";
+
+// Since Moka v0.11.0
+const OPTION_PER_KEY_EXPIRATION: &str = "per-key-expiration";
 
 fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
     let mut app = Command::new("Moka Bench")
@@ -195,10 +200,6 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
         .arg(Arg::new(OPTION_ITERATE).long(OPTION_ITERATE))
         .arg(Arg::new(OPTION_SIZE_AWARE).long(OPTION_SIZE_AWARE));
 
-    if cfg!(not(any(feature = "moka-v09", feature = "moka-v08"))) {
-        app = app.arg(Arg::new(OPTION_ENTRY_API).long(OPTION_ENTRY_API));
-    }
-
     if cfg!(not(feature = "moka-v08")) {
         app = app.arg(
             Arg::new(OPTION_EVICTION_LISTENER)
@@ -206,6 +207,18 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
                 .takes_value(true)
                 .use_value_delimiter(false),
         );
+    }
+
+    if cfg!(not(any(feature = "moka-v09", feature = "moka-v08"))) {
+        app = app.arg(Arg::new(OPTION_ENTRY_API).long(OPTION_ENTRY_API));
+    }
+
+    if cfg!(not(any(
+        feature = "moka-v010",
+        feature = "moka-v09",
+        feature = "moka-v08"
+    ))) {
+        app = app.arg(Arg::new(OPTION_PER_KEY_EXPIRATION).long(OPTION_PER_KEY_EXPIRATION));
     }
 
     let matches = app.get_matches();
@@ -264,8 +277,13 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
     let invalidate_all = matches.is_present(OPTION_INVALIDATE_ALL);
     let invalidate_entries_if = matches.is_present(OPTION_INVALIDATE_IF);
     let iterate = matches.is_present(OPTION_ITERATE);
-    let entry_api = matches.is_present(OPTION_ENTRY_API);
     let size_aware = matches.is_present(OPTION_SIZE_AWARE);
+
+    // Since Moka v0.10
+    let entry_api = matches.is_present(OPTION_ENTRY_API);
+
+    // Since Moka v0.11
+    let per_key_expiration = matches.is_present(OPTION_PER_KEY_EXPIRATION);
 
     let eviction_listener = if cfg!(not(feature = "moka-v08")) {
         if let Some(v) = matches.value_of(OPTION_EVICTION_LISTENER) {
@@ -290,21 +308,23 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
         eprintln!("\nWARNING: Testing Moka's entry API is disabled by default. Use --entry-api to enable it.\n");
     }
 
-    let config = Config::new(
+    let mut config = Config::new(
         trace_files[0],
         ttl_secs,
         tti_secs,
         num_clients,
         repeat,
         insertion_delay_micros,
-        insert_once,
-        invalidate,
-        invalidate_all,
-        invalidate_entries_if,
-        iterate,
-        entry_api,
-        eviction_listener,
-        size_aware,
     );
+    config.set_insert_once(insert_once);
+    config.set_invalidate(invalidate);
+    config.set_invalidate_all(invalidate_all);
+    config.set_invalidate_entries_if(invalidate_entries_if);
+    config.set_iterate(iterate);
+    config.set_eviction_listener(eviction_listener);
+    config.set_size_aware(size_aware);
+    config.set_entry_api(entry_api);
+    config.set_per_key_expiration(per_key_expiration);
+
     Ok((trace_files, config))
 }

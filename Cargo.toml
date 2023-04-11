@@ -6,8 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["moka-v010"]
+default = ["moka-v011"]
 
+moka-v011 = ["moka011"]
 moka-v010 = ["moka010"]
 moka-v09 = ["moka09"]
 moka-v08 = ["moka08"]
@@ -37,12 +38,20 @@ mini-moka = { optional = true, version = "0.10.0" }
 quick_cache = { optional = true, version = "0.2.1" }
 stretto = { optional = true, version = "0.7.1" }
 
+[dependencies.moka011]
+package = "moka"
+optional = true
+# version = "0.11.0"
+git = "https://github.com/moka-rs/moka"
+# branch = "master"
+branch = "per-entry-expiration"
+# path = "../moka"
+features = ["future"]
+
 [dependencies.moka010]
 package = "moka"
 optional = true
-# version = "0.10.0"
-git = "https://github.com/moka-rs/moka"
-branch = "master"
+version = "0.10.2"
 features = ["future"]
 
 [dependencies.moka09]

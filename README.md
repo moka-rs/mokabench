@@ -50,7 +50,8 @@ $ cargo build --release --no-default-features -F moka-v09
 
 | Feature       | Enabled Cache Product |
 |:--------------|:----------------------|
-| `moka-v010`   | [Moka](https://crates.io/crates/moka) v0.10.x (Enabled by default) |
+| `moka-v010`   | [Moka](https://crates.io/crates/moka) v0.11.x (Enabled by default) |
+| `moka-v010`   |  Moka v0.10.x |
 | `moka-v09`    |  Moka v0.9.x |
 | `moka-v08`    |  Moka v0.8.x |
 | `hashlink`    | [HashLink](https://crates.io/crates/hashlink) |
@@ -60,8 +61,8 @@ $ cargo build --release --no-default-features -F moka-v09
 
 NOTES:
 
-- `moka-v010` is enabled by default.
-- `moka-v010`, `moka-v09` and `moka-v08` are mutually exclusive.
+- `moka-v011` is enabled by default.
+- `moka-v011`, `moka-v010`, `moka-v09` and `moka-v08` are mutually exclusive.
 - `mini-moka` cannot be enabled when `moka-v09` or `moka-v08` is enabled.
 
 

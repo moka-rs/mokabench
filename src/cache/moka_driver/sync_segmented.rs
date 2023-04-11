@@ -88,12 +88,35 @@ impl<I> MokaSegmentedCache<I> {
         let mut builder = SegmentedCache::builder(num_segments)
             .max_capacity(max_cap)
             .initial_capacity(init_cap);
+
+        if config.per_key_expiration {
+            if cfg!(any(
+                feature = "moka-v08",
+                feature = "moka-v09",
+                feature = "moka-v010"
+            )) {
+                unreachable!();
+            }
+
+            #[cfg(not(any(feature = "moka-v08", feature = "moka-v09", feature = "moka-v010")))]
+            {
+                use crate::cache::moka_driver::expiry::MokabenchExpiry;
+                let expiry = MokabenchExpiry::new(config.ttl, config.tti);
+                builder = builder.expire_after(expiry);
+            }
+        }
+
         if let Some(ttl) = config.ttl {
-            builder = builder.time_to_live(ttl);
+            if !config.per_key_expiration {
+                builder = builder.time_to_live(ttl);
+            }
         }
         if let Some(tti) = config.tti {
-            builder = builder.time_to_idle(tti)
+            if !config.per_key_expiration {
+                builder = builder.time_to_idle(tti)
+            }
         }
+
         if config.invalidate_entries_if {
             builder = builder.support_invalidation_closures();
         }
