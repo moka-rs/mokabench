@@ -3,14 +3,14 @@
     any(feature = "moka-v010", feature = "moka-v09", feature = "moka-v08")
 ))]
 compile_error!(
-    "You cannot enable `moka-v010`, `moka-v09` and/or `moka-v8` features while `moka-v011` is enabled.\n\
+    "You cannot enable `moka-v010`, `moka-v09` and/or `moka-v08` features while `moka-v011` is enabled.\n\
                 You might need `--no-default-features`."
 );
 
 use std::io::prelude::*;
-use std::sync::Arc;
-use std::{fs::File, io::BufReader, time::Instant};
+use std::{fs::File, io::BufReader, sync::Arc, time::Instant};
 
+use crossbeam_channel::Sender;
 #[cfg(feature = "moka-v011")]
 pub(crate) use moka011 as moka;
 
@@ -27,6 +27,7 @@ mod cache;
 pub mod config;
 mod eviction_counters;
 mod load_gen;
+mod metrics_exporter;
 mod parser;
 mod report;
 mod trace_file;
@@ -43,6 +44,10 @@ use cache::{
 };
 use config::Config;
 use itertools::Itertools;
+use metrics_exporter::{
+    MetricsNames, METRICS_NAMES_MOKA_ASYNC_CACHE, METRICS_NAMES_MOKA_SYNC_CACHE,
+    METRICS_NAMES_MOKA_SYNC_SEG_CACHE,
+};
 use parser::TraceEntry;
 use report::ReportBuilder;
 
@@ -69,34 +74,57 @@ pub(crate) enum Command {
     Iterate,
 }
 
-pub fn run_multi_threads_moka_sync(
+pub async fn run_multi_threads_moka_sync(
     config: &Config,
     capacity: usize,
     num_clients: u16,
 ) -> anyhow::Result<Report> {
+    metrics_exporter::init("::1:8125").await;
+
     let max_cap = if config.size_aware {
         capacity as u64 * 2u64.pow(15)
     } else {
         capacity as u64
     };
     let report_builder = ReportBuilder::new("Moka Sync Cache", max_cap, Some(num_clients));
+    let metrics_names = Some(METRICS_NAMES_MOKA_SYNC_CACHE);
 
     #[cfg(not(any(feature = "moka-v08", feature = "moka-v09")))]
     if config.entry_api {
         let cache_driver = MokaSyncCache::with_entry_api(config, max_cap, capacity);
-        return run_multi_threads(config, num_clients, cache_driver, report_builder);
+        let result = run_multi_threads(
+            config,
+            num_clients,
+            cache_driver,
+            report_builder,
+            metrics_names,
+            false,
+        );
+        metrics_exporter::shutdown();
+        return result;
     }
 
     let cache_driver = MokaSyncCache::new(config, max_cap, capacity);
-    run_multi_threads(config, num_clients, cache_driver, report_builder)
+    let result = run_multi_threads(
+        config,
+        num_clients,
+        cache_driver,
+        report_builder,
+        metrics_names,
+        false,
+    );
+    metrics_exporter::shutdown();
+    result
 }
 
-pub fn run_multi_threads_moka_segment(
+pub async fn run_multi_threads_moka_segment(
     config: &Config,
     capacity: usize,
     num_clients: u16,
     num_segments: usize,
 ) -> anyhow::Result<Report> {
+    metrics_exporter::init("::1:8125").await;
+
     let max_cap = if config.size_aware {
         capacity as u64 * 2u64.pow(15)
     } else {
@@ -104,16 +132,35 @@ pub fn run_multi_threads_moka_segment(
     };
     let report_name = format!("Moka SegmentedCache({num_segments})");
     let report_builder = ReportBuilder::new(&report_name, max_cap, Some(num_clients));
+    let metrics_names: Option<MetricsNames> = Some(METRICS_NAMES_MOKA_SYNC_SEG_CACHE);
 
     #[cfg(not(any(feature = "moka-v08", feature = "moka-v09")))]
     if config.entry_api {
         let cache_driver =
             MokaSegmentedCache::with_entry_api(config, max_cap, capacity, num_segments);
-        return run_multi_threads(config, num_clients, cache_driver, report_builder);
+        let result = run_multi_threads(
+            config,
+            num_clients,
+            cache_driver,
+            report_builder,
+            metrics_names,
+            false,
+        );
+        metrics_exporter::shutdown();
+        return result;
     }
 
     let cache_driver = MokaSegmentedCache::new(config, max_cap, capacity, num_segments);
-    run_multi_threads(config, num_clients, cache_driver, report_builder)
+    let result = run_multi_threads(
+        config,
+        num_clients,
+        cache_driver,
+        report_builder,
+        metrics_names,
+        false,
+    );
+    metrics_exporter::shutdown();
+    result
 }
 
 pub async fn run_multi_tasks_moka_async(
@@ -121,21 +168,44 @@ pub async fn run_multi_tasks_moka_async(
     capacity: usize,
     num_clients: u16,
 ) -> anyhow::Result<Report> {
+    metrics_exporter::init("::1:8125").await;
+
     let max_cap = if config.size_aware {
         capacity as u64 * 2u64.pow(15)
     } else {
         capacity as u64
     };
     let report_builder = ReportBuilder::new("Moka Async Cache", max_cap, Some(num_clients));
+    let metrics_names: Option<MetricsNames> = Some(METRICS_NAMES_MOKA_ASYNC_CACHE);
 
     #[cfg(not(any(feature = "moka-v08", feature = "moka-v09")))]
     if config.entry_api {
         let cache_driver = MokaAsyncCache::with_entry_api(config, max_cap, capacity);
-        return run_multi_tasks(config, num_clients, cache_driver, report_builder).await;
+        let result = run_multi_tasks(
+            config,
+            num_clients,
+            cache_driver,
+            report_builder,
+            metrics_names,
+            false,
+        )
+        .await;
+        metrics_exporter::shutdown();
+        return result;
     }
 
     let cache_driver = MokaAsyncCache::new(config, max_cap, capacity);
-    run_multi_tasks(config, num_clients, cache_driver, report_builder).await
+    let result = run_multi_tasks(
+        config,
+        num_clients,
+        cache_driver,
+        report_builder,
+        metrics_names,
+        false,
+    )
+    .await;
+    metrics_exporter::shutdown();
+    result
 }
 
 #[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
@@ -156,7 +226,14 @@ pub fn run_multi_threads_moka_dash(
         "Moka Dash Cache"
     };
     let report_builder = ReportBuilder::new(report_name, max_cap, Some(num_clients));
-    run_multi_threads(config, num_clients, cache_driver, report_builder)
+    run_multi_threads(
+        config,
+        num_clients,
+        cache_driver,
+        report_builder,
+        None,
+        true,
+    )
 }
 
 #[cfg(feature = "hashlink")]
@@ -168,7 +245,14 @@ pub fn run_multi_threads_hashlink(
     let cache_driver = HashLink::new(config, capacity);
     let report_builder =
         ReportBuilder::new("HashLink (LRU w/ Mutex)", capacity as _, Some(num_clients));
-    run_multi_threads(config, num_clients, cache_driver, report_builder)
+    run_multi_threads(
+        config,
+        num_clients,
+        cache_driver,
+        report_builder,
+        None,
+        true,
+    )
 }
 
 #[cfg(feature = "quick_cache")]
@@ -185,7 +269,14 @@ pub fn run_multi_threads_quick_cache(
     let cache_driver = QuickCache::new(config, capacity, max_cap);
     let report_builder =
         ReportBuilder::new("QuickCache Sync Cache", capacity as _, Some(num_clients));
-    run_multi_threads(config, num_clients, cache_driver, report_builder)
+    run_multi_threads(
+        config,
+        num_clients,
+        cache_driver,
+        report_builder,
+        None,
+        true,
+    )
 }
 
 #[cfg(feature = "stretto")]
@@ -196,7 +287,14 @@ pub fn run_multi_threads_stretto(
 ) -> anyhow::Result<Report> {
     let cache_driver = StrettoCache::new(config, capacity);
     let report_builder = ReportBuilder::new("Stretto", capacity as _, Some(num_clients));
-    run_multi_threads(config, num_clients, cache_driver, report_builder)
+    run_multi_threads(
+        config,
+        num_clients,
+        cache_driver,
+        report_builder,
+        None,
+        true,
+    )
 }
 
 #[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
@@ -243,25 +341,25 @@ fn run_multi_threads(
     num_clients: u16,
     cache_driver: impl CacheDriver<TraceEntry> + Clone + Send + 'static,
     report_builder: ReportBuilder,
+    metrics_names: Option<MetricsNames>,
+    pre_process_all_commands: bool,
 ) -> anyhow::Result<Report> {
     let report_builder = Arc::new(report_builder);
-    let (send, receive) = crossbeam_channel::unbounded::<Vec<Command>>();
+    let (send, receive) = if pre_process_all_commands {
+        crossbeam_channel::unbounded::<Vec<Command>>()
+    } else {
+        crossbeam_channel::bounded(100)
+    };
 
-    // In order to have the minimum harness overhead and not have many consumers
-    // waiting for the single producer, we buffer all operations in a channel.
-    let mut counter = 0;
-    for _ in 0..(config.repeat.unwrap_or(1)) {
-        let f = File::open(config.trace_file.path())?;
-        let reader = BufReader::new(f);
-        for chunk in reader.lines().enumerate().chunks(BATCH_SIZE).into_iter() {
-            let chunk = chunk.map(|(i, r)| r.map(|s| (i, s)));
-            let commands = load_gen::generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
-            send.send(commands)?;
-        }
+    if pre_process_all_commands {
+        // In order to have the minimum harness overhead and not have many consumers
+        // waiting for the single producer, we buffer all operations in a channel.
+        // https://github.com/moka-rs/mokabench/pull/6
+        generate_and_send_commands(config, &send)?;
+    } else {
+        // Read the whole trace file to prime the disk cache of the filesystem.
+        read_trace_file(config)?;
     }
-
-    // Drop the sender channel to notify the workers that we are finished.
-    std::mem::drop(send);
 
     let instant = Instant::now();
     let handles = (0..num_clients)
@@ -272,13 +370,45 @@ fn run_multi_threads(
 
             std::thread::spawn(move || {
                 let mut report = rb.build();
+                #[allow(unused)]
+                let mut prev_report = report.clone();
+                #[allow(unused)]
+                let mut prev_epoch = 0;
+
                 while let Ok(commands) = ch.recv() {
                     cache::process_commands(commands, &mut cache, &mut report);
+
+                    #[cfg(feature = "metrics")]
+                    {
+                        let epoch = metrics_exporter::current_epoch();
+                        if epoch > prev_epoch {
+                            if let Some(names) = metrics_names {
+                                let diff = report.diff(&prev_report);
+                                prev_report = report.clone();
+                                prev_epoch = epoch;
+                                metrics_exporter::report_stats(&names, &diff);
+                            }
+                        }
+                    }
                 }
+
+                #[cfg(feature = "metrics")]
+                if let Some(names) = metrics_names {
+                    let diff = report.diff(&prev_report);
+                    metrics_exporter::report_stats(&names, &diff);
+                }
+
                 report
             })
         })
         .collect::<Vec<_>>();
+
+    if !pre_process_all_commands {
+        generate_and_send_commands(config, &send)?;
+    }
+
+    // Drop the sender channel to notify the workers that we are finished.
+    std::mem::drop(send);
 
     // Wait for the workers to finish and collect their reports.
     let reports = handles
@@ -304,25 +434,25 @@ async fn run_multi_tasks(
     num_clients: u16,
     cache_driver: impl AsyncCacheDriver<TraceEntry> + Clone + Send + 'static,
     report_builder: ReportBuilder,
+    metrics_names: Option<MetricsNames>,
+    pre_process_all_commands: bool,
 ) -> anyhow::Result<Report> {
     let report_builder = Arc::new(report_builder);
-    let (send, receive) = crossbeam_channel::unbounded::<Vec<Command>>();
+    let (send, receive) = if pre_process_all_commands {
+        crossbeam_channel::unbounded::<Vec<Command>>()
+    } else {
+        crossbeam_channel::bounded(100)
+    };
 
-    // In order to have the minimum harness overhead and not have many consumers
-    // waiting for the single producer, we buffer all operations in a channel.
-    let mut counter = 0;
-    for _ in 0..(config.repeat.unwrap_or(1)) {
-        let f = File::open(config.trace_file.path())?;
-        let reader = BufReader::new(f);
-        for chunk in reader.lines().enumerate().chunks(BATCH_SIZE).into_iter() {
-            let chunk = chunk.map(|(i, r)| r.map(|s| (i, s)));
-            let commands = load_gen::generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
-            send.send(commands)?;
-        }
+    if pre_process_all_commands {
+        // In order to have the minimum harness overhead and not have many consumers
+        // waiting for the single producer, we buffer all operations in a channel.
+        // https://github.com/moka-rs/mokabench/pull/6
+        generate_and_send_commands(config, &send)?;
+    } else {
+        // Read the whole trace file to prime the disk cache of the filesystem.
+        read_trace_file(config)?;
     }
-
-    // Drop the sender channel to notify the workers that we are finished.
-    std::mem::drop(send);
 
     let instant = Instant::now();
     let handles = (0..num_clients)
@@ -333,13 +463,45 @@ async fn run_multi_tasks(
 
             tokio::task::spawn(async move {
                 let mut report = rb.build();
+                #[allow(unused)]
+                let mut prev_report = report.clone();
+                #[allow(unused)]
+                let mut prev_epoch = 0;
+
                 while let Ok(commands) = ch.recv() {
                     cache::process_commands_async(commands, &mut cache, &mut report).await;
+
+                    #[cfg(feature = "metrics")]
+                    {
+                        let epoch = metrics_exporter::current_epoch();
+                        if epoch > prev_epoch {
+                            if let Some(names) = metrics_names {
+                                let diff = report.diff(&prev_report);
+                                prev_report = report.clone();
+                                prev_epoch = epoch;
+                                metrics_exporter::report_stats(&names, &diff);
+                            }
+                        }
+                    }
                 }
+
+                #[cfg(feature = "metrics")]
+                if let Some(names) = metrics_names {
+                    let diff = report.diff(&prev_report);
+                    metrics_exporter::report_stats(&names, &diff);
+                }
+
                 report
             })
         })
         .collect::<Vec<_>>();
+
+    if !pre_process_all_commands {
+        generate_and_send_commands(config, &send)?;
+    }
+
+    // Drop the sender channel to notify the workers that we are finished.
+    std::mem::drop(send);
 
     // Wait for the workers to finish and collect their reports.
     let reports = futures_util::future::join_all(handles).await;
@@ -357,4 +519,31 @@ async fn run_multi_tasks(
     }
 
     Ok(report)
+}
+
+fn generate_and_send_commands(
+    config: &Config,
+    send_channel: &Sender<Vec<Command>>,
+) -> anyhow::Result<()> {
+    let mut counter = 0;
+    for _ in 0..(config.repeat.unwrap_or(1)) {
+        let f = File::open(config.trace_file.path())?;
+        let reader = BufReader::new(f);
+        for chunk in reader.lines().enumerate().chunks(BATCH_SIZE).into_iter() {
+            let chunk = chunk.map(|(i, r)| r.map(|s| (i, s)));
+            let commands = load_gen::generate_commands(config, BATCH_SIZE, &mut counter, chunk)?;
+            send_channel.send(commands)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Read the whole trace file to prime the disk cache of the filesystem.
+fn read_trace_file(config: &Config) -> anyhow::Result<()> {
+    let f = File::open(config.trace_file.path())?;
+    let reader = BufReader::new(f);
+    std::hint::black_box(reader.lines().count());
+
+    Ok(())
 }

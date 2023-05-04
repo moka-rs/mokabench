@@ -7,9 +7,34 @@ use mokabench::{
 
 use clap::{Arg, Command};
 
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
+#[cfg(target_env = "msvc")]
+compile_error!("Sorry, Windows MSVC target is not supported because we cannot use jemalloc there");
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    #[cfg(feature = "metrics")]
+    {
+        // Show tracing logs on the console so that we can see any errors in
+        // metrics_exporter_dogstatsd crate.
+        let subscriber = tracing_subscriber::FmtSubscriber::builder()
+            .with_max_level(tracing::Level::INFO)
+            .finish();
+
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("setting default subscriber failed");
+
+        // tracing::info!("tracing_subscriber::FmtSubscriber enabled");
+    }
+
     let (trace_files, mut config) = create_config()?;
+
     for trace_file in trace_files {
         config.trace_file = trace_file;
         println!("{config:?}");
@@ -94,7 +119,7 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
     }
 
     for num_clients in num_clients_slice {
-        let report = mokabench::run_multi_threads_moka_sync(config, capacity, *num_clients)?;
+        let report = mokabench::run_multi_threads_moka_sync(config, capacity, *num_clients).await?;
         println!("{}", report.to_csv_record());
     }
 
@@ -112,12 +137,9 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
     let num_segments = 8;
 
     for num_clients in num_clients_slice {
-        let report = mokabench::run_multi_threads_moka_segment(
-            config,
-            capacity,
-            *num_clients,
-            num_segments,
-        )?;
+        let report =
+            mokabench::run_multi_threads_moka_segment(config, capacity, *num_clients, num_segments)
+                .await?;
         println!("{}", report.to_csv_record());
     }
 
