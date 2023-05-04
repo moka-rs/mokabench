@@ -5,7 +5,7 @@
 ### Added
 
 - Added support for moka v0.11. ([#8](gh-pull-0008))
-    - Added a CLI option `per-key-expiration`.
+    - Added a CLI option `--per-key-expiration`.
 
 ## Version 0.8.0
 
