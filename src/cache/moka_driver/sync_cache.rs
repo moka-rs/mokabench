@@ -96,8 +96,6 @@ impl<I> MokaSyncCache<I> {
                 use crate::cache::moka_driver::expiry::MokabenchExpiry;
                 let expiry = MokabenchExpiry::new(config.ttl, config.tti);
                 builder = builder.expire_after(expiry);
-
-                println!("yo");
             }
         }
 
