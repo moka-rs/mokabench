@@ -1,12 +1,18 @@
-#[cfg(all(feature = "moka-v010", any(feature = "moka-v09", feature = "moka-v08")))]
+#[cfg(all(
+    feature = "moka-v011",
+    any(feature = "moka-v010", feature = "moka-v09", feature = "moka-v08")
+))]
 compile_error!(
-    "You cannot enable `moka-v09` and/or `moka-v8` features while `moka-v010` is enabled.\n\
+    "You cannot enable `moka-v010`, `moka-v09` and/or `moka-v8` features while `moka-v011` is enabled.\n\
                 You might need `--no-default-features`."
 );
 
 use std::io::prelude::*;
 use std::sync::Arc;
 use std::{fs::File, io::BufReader, time::Instant};
+
+#[cfg(feature = "moka-v011")]
+pub(crate) use moka011 as moka;
 
 #[cfg(feature = "moka-v010")]
 pub(crate) use moka010 as moka;
