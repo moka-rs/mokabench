@@ -341,7 +341,7 @@ fn run_multi_threads(
     num_clients: u16,
     cache_driver: impl CacheDriver<TraceEntry> + Clone + Send + 'static,
     report_builder: ReportBuilder,
-    metrics_names: Option<MetricsNames>,
+    _metrics_names: Option<MetricsNames>,
     pre_process_all_commands: bool,
 ) -> anyhow::Result<Report> {
     let report_builder = Arc::new(report_builder);
@@ -382,7 +382,7 @@ fn run_multi_threads(
                     {
                         let epoch = metrics_exporter::current_epoch();
                         if epoch > prev_epoch {
-                            if let Some(names) = metrics_names {
+                            if let Some(names) = _metrics_names {
                                 let diff = report.diff(&prev_report);
                                 prev_report = report.clone();
                                 prev_epoch = epoch;
@@ -393,7 +393,7 @@ fn run_multi_threads(
                 }
 
                 #[cfg(feature = "metrics")]
-                if let Some(names) = metrics_names {
+                if let Some(names) = _metrics_names {
                     let diff = report.diff(&prev_report);
                     metrics_exporter::report_stats(&names, &diff);
                 }
@@ -426,6 +426,10 @@ fn run_multi_threads(
         report.add_eviction_counts(cache_driver.eviction_counters().as_ref().unwrap());
     }
 
+    if let Some(stats) = cache_driver.cache_stats() {
+        println!("\n{stats:#?}\n");
+    }
+
     Ok(report)
 }
 
@@ -434,7 +438,7 @@ async fn run_multi_tasks(
     num_clients: u16,
     cache_driver: impl AsyncCacheDriver<TraceEntry> + Clone + Send + 'static,
     report_builder: ReportBuilder,
-    metrics_names: Option<MetricsNames>,
+    _metrics_names: Option<MetricsNames>,
     pre_process_all_commands: bool,
 ) -> anyhow::Result<Report> {
     let report_builder = Arc::new(report_builder);
@@ -475,7 +479,7 @@ async fn run_multi_tasks(
                     {
                         let epoch = metrics_exporter::current_epoch();
                         if epoch > prev_epoch {
-                            if let Some(names) = metrics_names {
+                            if let Some(names) = _metrics_names {
                                 let diff = report.diff(&prev_report);
                                 prev_report = report.clone();
                                 prev_epoch = epoch;
@@ -486,7 +490,7 @@ async fn run_multi_tasks(
                 }
 
                 #[cfg(feature = "metrics")]
-                if let Some(names) = metrics_names {
+                if let Some(names) = _metrics_names {
                     let diff = report.diff(&prev_report);
                     metrics_exporter::report_stats(&names, &diff);
                 }
@@ -516,6 +520,10 @@ async fn run_multi_tasks(
 
     if config.is_eviction_listener_enabled() {
         report.add_eviction_counts(cache_driver.eviction_counters().as_ref().unwrap());
+    }
+
+    if let Some(stats) = cache_driver.cache_stats() {
+        println!("\n{stats:#?}\n");
     }
 
     Ok(report)

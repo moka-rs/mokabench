@@ -48,6 +48,11 @@ pub(crate) trait CacheDriver<T> {
     fn eviction_counters(&self) -> Option<Arc<EvictionCounters>> {
         None
     }
+
+    #[cfg(feature = "moka-v011")]
+    fn cache_stats(&self) -> Option<crate::moka::stats::CacheStats> {
+        None
+    }
 }
 
 #[async_trait]
@@ -60,6 +65,11 @@ pub(crate) trait AsyncCacheDriver<T> {
     fn invalidate_entries_if(&mut self, entry: &T);
     async fn iterate(&mut self);
     fn eviction_counters(&self) -> Option<Arc<EvictionCounters>>;
+
+    #[cfg(feature = "moka-v011")]
+    fn cache_stats(&self) -> Option<crate::moka::stats::CacheStats> {
+        None
+    }
 }
 
 pub(crate) fn process_commands(

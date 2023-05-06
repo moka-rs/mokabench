@@ -143,6 +143,11 @@ impl<I> MokaAsyncCache<I> {
                 eviction_counters = None;
             }
 
+            #[cfg(not(any(feature = "moka-v09", feature = "moka-v010")))]
+            {
+                builder = builder.enable_stats();
+            }
+
             cache = builder.build_with_hasher(DefaultHasher::default());
         }
 
@@ -233,6 +238,11 @@ where
 
     fn eviction_counters(&self) -> Option<Arc<EvictionCounters>> {
         self.eviction_counters.as_ref().map(Arc::clone)
+    }
+
+    #[cfg(not(any(feature = "moka-v08", feature = "moka-v09", feature = "moka-v010")))]
+    fn cache_stats(&self) -> Option<crate::moka::stats::CacheStats> {
+        Some(self.cache.stats())
     }
 }
 

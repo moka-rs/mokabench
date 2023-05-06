@@ -37,8 +37,10 @@ async fn main() -> anyhow::Result<()> {
 
     for trace_file in trace_files {
         config.trace_file = trace_file;
-        println!("{config:?}");
-        println!();
+
+        // TODO: Maybe add a `--verbose` option to show the config and other info?
+        // println!("{config:#?}");
+        // println!();
 
         println!(
             "{}",
