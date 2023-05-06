@@ -155,7 +155,7 @@ impl<I> MokaAsyncCache<I> {
 
     async fn insert(&self, key: usize, req_id: usize) {
         let value = cache::make_value(&self.config, key, req_id);
-        cache::sleep_thread_for_insertion(&self.config);
+        cache::sleep_task_for_insertion(&self.config).await;
         self.cache.insert(key, value).await;
     }
 }
@@ -281,7 +281,7 @@ impl GetWith {
     async fn get_with(&self, key: usize, req_id: usize, is_inserted: Arc<AtomicBool>) {
         self.cache
             .get_with(key, async {
-                cache::sleep_thread_for_insertion(&self.config);
+                cache::sleep_task_for_insertion(&self.config).await;
                 is_inserted.store(true, Ordering::Release);
                 cache::make_value(&self.config, key, req_id)
             })
@@ -299,7 +299,7 @@ impl GetWith {
             InitClosureType::GetOrTryInsertWithError1 => self
                 .cache
                 .try_get_with(key, async {
-                    cache::sleep_thread_for_insertion(&self.config);
+                    cache::sleep_task_for_insertion(&self.config).await;
                     is_inserted.store(true, Ordering::Release);
                     Ok(cache::make_value(&self.config, key, req_id)) as Result<_, InitClosureError1>
                 })
@@ -308,7 +308,7 @@ impl GetWith {
             InitClosureType::GetOrTyyInsertWithError2 => self
                 .cache
                 .try_get_with(key, async {
-                    cache::sleep_thread_for_insertion(&self.config);
+                    cache::sleep_task_for_insertion(&self.config).await;
                     is_inserted.store(true, Ordering::Release);
                     Ok(cache::make_value(&self.config, key, req_id)) as Result<_, InitClosureError2>
                 })
@@ -368,7 +368,7 @@ mod entry_api {
             self.cache
                 .entry(key)
                 .or_insert_with(async {
-                    cache::sleep_thread_for_insertion(&self.config);
+                    cache::sleep_task_for_insertion(&self.config).await;
                     cache::make_value(&self.config, key, req_id)
                 })
                 .await
@@ -386,7 +386,7 @@ mod entry_api {
                     .cache
                     .entry(key)
                     .or_try_insert_with(async {
-                        cache::sleep_thread_for_insertion(&self.config);
+                        cache::sleep_task_for_insertion(&self.config).await;
                         Ok(cache::make_value(&self.config, key, req_id))
                             as Result<_, InitClosureError1>
                     })
@@ -397,7 +397,7 @@ mod entry_api {
                     .cache
                     .entry(key)
                     .or_try_insert_with(async {
-                        cache::sleep_thread_for_insertion(&self.config);
+                        cache::sleep_task_for_insertion(&self.config).await;
                         Ok(cache::make_value(&self.config, key, req_id))
                             as Result<_, InitClosureError2>
                     })
