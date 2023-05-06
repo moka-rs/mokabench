@@ -172,6 +172,12 @@ pub(crate) fn sleep_thread_for_insertion(config: &Config) {
     }
 }
 
+pub(crate) async fn sleep_task_for_insertion(config: &Config) {
+    if let Some(delay) = config.insertion_delay {
+        async_io::Timer::after(delay).await;
+    }
+}
+
 const HASH_SEED_KEY: u64 = 982922761776577566;
 
 #[derive(Clone, Default)]
