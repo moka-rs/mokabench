@@ -32,6 +32,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c7d0618f0e0b7e8ff11427422b64564d5fb0be1940354bfe2e0529b18a9d9b8"
 
 [[package]]
+name = "arc-swap"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bddcadddf5e9015d310179a59bb28c4d4b9920ad0f11e8e14dbadf654890c9a6"
+
+[[package]]
 name = "async-io"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -408,6 +414,9 @@ name = "hashbrown"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43a3c133739dddd0d2990f9a4bdf8eb4b21ef50e4851ca85ab661199821d510e"
+dependencies = [
+ "ahash 0.8.3",
+]
 
 [[package]]
 name = "hashlink"
@@ -582,6 +591,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "metrics"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa8ebbd1a9e57bbab77b9facae7f5136aea44c356943bf9a198f647da64285d6"
+dependencies = [
+ "ahash 0.8.3",
+ "metrics-macros",
+ "portable-atomic",
+]
+
+[[package]]
+name = "metrics-exporter-dogstatsd"
+version = "0.7.0"
+source = "git+https://github.com/tatsuya6502/metrics-exporter-dogstatsd?branch=metrics-v0.21#42334fb55890783d5f984ae7a9912dc1c0d1d1d6"
+dependencies = [
+ "indexmap",
+ "metrics",
+ "metrics-util",
+ "quanta 0.11.0",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "metrics-macros"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddece26afd34c31585c74a4db0630c376df271c285d682d1e55012197830b6df"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.15",
+]
+
+[[package]]
+name = "metrics-util"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "111cb375987443c3de8d503580b536f77dc8416d32db62d9456db5d93bd7ac47"
+dependencies = [
+ "crossbeam-epoch 0.9.14",
+ "crossbeam-utils 0.8.15",
+ "hashbrown 0.13.2",
+ "metrics",
+ "num_cpus",
+ "quanta 0.11.0",
+ "sketches-ddsketch",
+]
+
+[[package]]
 name = "mini-moka"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -594,6 +654,18 @@ dependencies = [
  "smallvec",
  "tagptr",
  "triomphe",
+]
+
+[[package]]
+name = "mio"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b9d9a46eff5b4ff64b45a9e316a6d1e0bc719ef429cbec4dc630684212bfdf9"
+dependencies = [
+ "libc",
+ "log",
+ "wasi 0.11.0+wasi-snapshot-preview1",
+ "windows-sys 0.45.0",
 ]
 
 [[package]]
@@ -678,8 +750,7 @@ dependencies = [
 [[package]]
 name = "moka"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "934030d03f6191edbb4ba16835ccdb80d560788ac686570a8e2986a0fb59ded8"
+source = "git+https://github.com/moka-rs/moka?branch=cache-stats-v0.11#f35cbf22aa7dcec9d0a9a68dd77f970ee2bf567c"
 dependencies = [
  "async-io",
  "async-lock",
@@ -706,24 +777,43 @@ name = "mokabench"
 version = "0.9.0"
 dependencies = [
  "anyhow",
+ "arc-swap",
  "async-io",
  "async-trait",
  "clap",
  "crossbeam-channel",
+ "crossbeam-epoch 0.9.14",
  "futures-util",
  "hashlink",
  "itertools",
+ "metrics",
+ "metrics-exporter-dogstatsd",
  "mini-moka",
  "moka 0.10.2",
  "moka 0.11.0",
  "moka 0.8.6",
  "moka 0.9.7",
+ "once_cell",
  "parking_lot",
  "quick_cache",
  "stretto",
  "thiserror",
+ "tikv-jemalloc-ctl",
+ "tikv-jemallocator",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "xxhash-rust",
+]
+
+[[package]]
+name = "nu-ansi-term"
+version = "0.46.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77a8165726e8236064dbb45459242600304b42a5ea24ee2948e18e023bf7ba84"
+dependencies = [
+ "overload",
+ "winapi",
 ]
 
 [[package]]
@@ -747,6 +837,12 @@ name = "os_str_bytes"
 version = "6.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ceedf44fb00f2d1984b0bc98102627ce622e083e49a5bacdb3e514fa4238e267"
+
+[[package]]
+name = "overload"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "parking"
@@ -778,6 +874,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "paste"
+version = "1.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f746c4065a8fa3fe23974dd82f15431cc8d40779821001404d10d2e79ca7d79"
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -804,6 +906,12 @@ dependencies = [
  "pin-project-lite",
  "windows-sys 0.48.0",
 ]
+
+[[package]]
+name = "portable-atomic"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f602a0d1e09a48e4f8e8b4d4042e32807c3676da31f2ecabeac9f96226ec6c45"
 
 [[package]]
 name = "ppv-lite86"
@@ -1010,18 +1118,18 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.160"
+version = "1.0.162"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb2f3770c8bce3bcda7e149193a069a0f4365bda1fa5cd88e03bca26afc1216c"
+checksum = "71b2f6e1ab5c2b98c05f0f35b236b22e8df7ead6ffbf51d7808da7f8817e7ab6"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.160"
+version = "1.0.162"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "291a097c63d8497e00160b166a967a4a79c64f3facdd01cbd7502231688d77df"
+checksum = "a2a0814352fd64b58489904a44ea8d90cb1a91dcb6b4f5ebabc32c8318e93cb6"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1040,6 +1148,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sharded-slab"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "900fba806f70c630b0a382d0d825e17a0f19fcd059a2ade1ff237bcddf446b31"
+dependencies = [
+ "lazy_static",
+]
+
+[[package]]
 name = "skeptic"
 version = "0.13.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1053,6 +1170,12 @@ dependencies = [
  "tempfile",
  "walkdir",
 ]
+
+[[package]]
+name = "sketches-ddsketch"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68a406c1882ed7f29cd5e248c9848a80e7cb6ae0fea82346d2746f2f941c07e1"
 
 [[package]]
 name = "slab"
@@ -1184,14 +1307,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "thread_local"
+version = "1.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3fdd6f064ccff2d6567adcb3873ca630700f00b5ad3f060c25b5dcfd9a4ce152"
+dependencies = [
+ "cfg-if 1.0.0",
+ "once_cell",
+]
+
+[[package]]
+name = "tikv-jemalloc-ctl"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e37706572f4b151dff7a0146e040804e9c26fe3a3118591112f05cf12a4216c1"
+dependencies = [
+ "libc",
+ "paste",
+ "tikv-jemalloc-sys",
+]
+
+[[package]]
+name = "tikv-jemalloc-sys"
+version = "0.5.3+5.3.0-patched"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a678df20055b43e57ef8cddde41cdfda9a3c1a060b67f4c5836dfb1d78543ba8"
+dependencies = [
+ "cc",
+ "libc",
+]
+
+[[package]]
+name = "tikv-jemallocator"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20612db8a13a6c06d57ec83953694185a367e16945f66565e8028d2c0bd76979"
+dependencies = [
+ "libc",
+ "tikv-jemalloc-sys",
+]
+
+[[package]]
 name = "tokio"
 version = "1.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3c786bf8134e5a3a166db9b29ab8f48134739014a3eca7bc6bfa95d673b136f"
 dependencies = [
  "autocfg",
+ "libc",
+ "mio",
  "num_cpus",
  "pin-project-lite",
+ "socket2",
  "tokio-macros",
  "windows-sys 0.48.0",
 ]
@@ -1205,6 +1372,64 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.15",
+]
+
+[[package]]
+name = "tracing"
+version = "0.1.37"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ce8c33a8d48bd45d624a6e523445fd21ec13d3653cd51f681abf67418f54eb8"
+dependencies = [
+ "cfg-if 1.0.0",
+ "pin-project-lite",
+ "tracing-attributes",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-attributes"
+version = "0.1.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f57e3ca2a01450b1a921183a9c9cbfda207fd822cef4ccb00a65402cbba7a74"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.15",
+]
+
+[[package]]
+name = "tracing-core"
+version = "0.1.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24eb03ba0eab1fd845050058ce5e616558e8f8d8fca633e6b163fe25c797213a"
+dependencies = [
+ "once_cell",
+ "valuable",
+]
+
+[[package]]
+name = "tracing-log"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78ddad33d2d10b1ed7eb9d1f518a5674713876e97e5bb9b7345a7984fbb4f922"
+dependencies = [
+ "lazy_static",
+ "log",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30a651bc37f915e81f087d86e62a18eec5f79550c7faff886f7090b4ea757c77"
+dependencies = [
+ "nu-ansi-term",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing-core",
+ "tracing-log",
 ]
 
 [[package]]
@@ -1240,6 +1465,12 @@ checksum = "4dad5567ad0cf5b760e5665964bec1b47dfd077ba8a2544b513f3556d3d239a2"
 dependencies = [
  "getrandom",
 ]
+
+[[package]]
+name = "valuable"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "830b7e5d4d90034032940e4ace0d9a9a057e7a45cd94e6c007832e39edb82f6d"
 
 [[package]]
 name = "version_check"

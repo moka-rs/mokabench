@@ -1,12 +1,19 @@
 {
     "editor.rulers": [85],
-    "rust-analyzer.cargo.features": ["hashlink", "mini-moka", "quick_cache", "stretto"],
+    "rust-analyzer.cargo.features": [
+        "hashlink",
+        "mini-moka",
+        "quick_cache",
+        "stretto",
+        "metrics"
+    ],
     "rust-analyzer.server.extraEnv": {
         "CARGO_TARGET_DIR": "target/ra"
     },
     "cSpell.words": [
         "clippy",
         "Dharmendra",
+        "dogstatsd",
         "hashbrown",
         "Hasher",
         "hashlink",
@@ -15,6 +22,8 @@
         "moka",
         "mokabench",
         "oltp",
+        "pointee",
+        "Statsd",
         "thiserror",
         "Toolchain",
         "unsync"

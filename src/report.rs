@@ -63,6 +63,31 @@ impl Report {
         }
     }
 
+    /// Returns a new report with the difference between the two reports.
+    pub fn diff(&self, other: &Self) -> Self {
+        let (l, s) = if self.insert_count > other.insert_count {
+            (self, other)
+        } else {
+            (other, self)
+        };
+
+        let duration = match (l.duration, s.duration) {
+            (Some(d_l), Some(d_s)) => Some(d_l - d_s),
+            _ => None,
+        };
+
+        Self {
+            insert_count: l.insert_count - s.insert_count,
+            read_count: l.read_count - s.read_count,
+            hit_count: l.hit_count - s.hit_count,
+            invalidation_count: l.invalidation_count - s.invalidation_count,
+            eviction_count: l.eviction_count - s.eviction_count,
+            expiration_count: l.expiration_count - s.expiration_count,
+            duration,
+            ..self.clone()
+        }
+    }
+
     pub(crate) fn add_eviction_counts(&mut self, eviction_counters: &EvictionCounters) {
         self.has_eviction_counts = true;
         self.invalidation_count += eviction_counters.explicit();
