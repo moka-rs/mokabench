@@ -46,7 +46,7 @@ impl QuickCache {
             cache: ::quick_cache::sync::Cache::with_options(
                 options,
                 CustomWeighter(config.size_aware),
-                DefaultHasher::default(),
+                DefaultHasher,
             )
             .into(),
         }

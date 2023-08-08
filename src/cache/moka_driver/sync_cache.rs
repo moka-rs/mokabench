@@ -122,7 +122,7 @@ impl<I> MokaSyncCache<I> {
 
         #[cfg(feature = "moka-v08")]
         {
-            cache = builder.build_with_hasher(DefaultHasher::default());
+            cache = builder.build_with_hasher(DefaultHasher);
             eviction_counters = None;
         }
 
@@ -155,7 +155,7 @@ impl<I> MokaSyncCache<I> {
                 eviction_counters = None;
             }
 
-            cache = builder.build_with_hasher(DefaultHasher::default());
+            cache = builder.build_with_hasher(DefaultHasher);
         }
 
         (cache, eviction_counters)

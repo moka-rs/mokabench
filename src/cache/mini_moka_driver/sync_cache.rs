@@ -39,7 +39,7 @@ impl MiniMokSyncCache {
 
         Self {
             config: Arc::new(config.clone()),
-            cache: builder.build_with_hasher(DefaultHasher::default()),
+            cache: builder.build_with_hasher(DefaultHasher),
         }
     }
 

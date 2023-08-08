@@ -28,10 +28,7 @@ impl HashLink {
 
         Self {
             config: Arc::new(config.clone()),
-            cache: Arc::new(Mutex::new(LruCache::with_hasher(
-                capacity,
-                DefaultHasher::default(),
-            ))),
+            cache: Arc::new(Mutex::new(LruCache::with_hasher(capacity, DefaultHasher))),
         }
     }
 
