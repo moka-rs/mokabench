@@ -99,7 +99,19 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
     }
 
     for num_clients in num_clients_slice {
-        if config.eviction_listener == RemovalNotificationMode::Immediate {
+        if cfg!(feature = "moka-v012")
+            && config.eviction_listener == RemovalNotificationMode::Queued
+        {
+            eprintln!(
+                "WARNING: eviction_listener = \"queued\" is not supported by \
+                    the async cache. \"immediate\" mode will be used for it."
+            );
+        } else if cfg!(any(
+            feature = "moka-v09",
+            feature = "moka-v010",
+            feature = "moka-v011"
+        )) && config.eviction_listener == RemovalNotificationMode::Immediate
+        {
             eprintln!(
                 "WARNING: eviction_listener = \"immediate\" is not supported by \
                     the async cache. \"queued\" mode will be used for it."

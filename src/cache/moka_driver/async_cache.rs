@@ -127,7 +127,28 @@ impl<I> MokaAsyncCache<I> {
             eviction_counters = None;
         }
 
-        #[cfg(not(feature = "moka-v08"))]
+        #[cfg(feature = "moka-v012")]
+        {
+            use crate::moka::future::FutureExt;
+
+            if config.is_eviction_listener_enabled() {
+                let c0 = Arc::new(EvictionCounters::default());
+                let c1 = Arc::clone(&c0);
+
+                builder = builder.eviction_listener(move |_k, _v, cause| {
+                    c1.increment(cause);
+                    async {}.boxed()
+                });
+
+                eviction_counters = Some(c0);
+            } else {
+                eviction_counters = None;
+            }
+
+            cache = builder.build_with_hasher(DefaultHasher);
+        }
+
+        #[cfg(any(feature = "moka-v011", feature = "moka-v010", feature = "moka-v09"))]
         {
             if config.is_eviction_listener_enabled() {
                 let c0 = Arc::new(EvictionCounters::default());
@@ -149,7 +170,13 @@ impl<I> MokaAsyncCache<I> {
         (cache, eviction_counters)
     }
 
-    fn get(&self, key: usize) -> bool {
+    #[cfg(feature = "moka-v012")]
+    async fn get(&self, key: usize) -> bool {
+        self.cache.get(&key).await.is_some()
+    }
+
+    #[cfg(not(feature = "moka-v012"))]
+    async fn get(&self, key: usize) -> bool {
         self.cache.get(&key).is_some()
     }
 
@@ -170,7 +197,7 @@ where
         let mut req_id = entry.line_number();
 
         for block in entry.range() {
-            if self.get(block) {
+            if self.get(block).await {
                 counters.read_hit();
             } else {
                 self.insert(block, req_id).await;

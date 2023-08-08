@@ -1,5 +1,12 @@
 # Mokabench &mdash; Change Log
 
+## Version 0.10.0
+
+### Added
+
+- Added support for moka v0.12. ([#??](gh-pull-????))
+
+
 ## Version 0.9.0
 
 ### Added

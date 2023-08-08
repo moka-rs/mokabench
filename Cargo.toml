@@ -1,13 +1,14 @@
 [package]
 name = "mokabench"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["moka-v011"]
+default = ["moka-v012"]
 
+moka-v012 = ["moka012"]
 moka-v011 = ["moka011"]
 moka-v010 = ["moka010"]
 moka-v09 = ["moka09"]
@@ -24,7 +25,7 @@ async-trait = "0.1.64"
 clap = "3.2.23"
 crossbeam-channel = "0.5.6"
 futures-util = "0.3.26"
-itertools = "0.10.5"
+itertools = "0.11.0"
 parking_lot = "0.12.1"
 thiserror = "1.0.38"
 xxhash-rust = { version = "0.8.6", features = ["xxh3"] }
@@ -38,25 +39,34 @@ mini-moka = { optional = true, version = "0.10.0" }
 quick_cache = { optional = true, version = "0.2.1" }
 stretto = { optional = true, version = "0.7.1" }
 
+[dependencies.moka012]
+package = "moka"
+optional = true
+# version = "0.12.0"
+# git = "https://github.com/moka-rs/moka"
+# branch = "main"
+path = "../moka"
+features = ["future"]
+
 [dependencies.moka011]
 package = "moka"
 optional = true
-version = "0.11.0"
+version = "0.11.3"
 # git = "https://github.com/moka-rs/moka"
-# branch = "master"
+# branch = "main"
 # path = "../moka"
 features = ["future"]
 
 [dependencies.moka010]
 package = "moka"
 optional = true
-version = "0.10.2"
+version = "0.10.4"
 features = ["future"]
 
 [dependencies.moka09]
 package = "moka"
 optional = true
-version = "0.9.7"
+version = "0.9.9"
 features = ["future", "dash"]
 
 [dependencies.moka08]
