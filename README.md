@@ -45,12 +45,15 @@ For example:
 $ cargo build --release -F mini-moka,quick_cache
 
 ## Disable the latest version of Moka, but enable v0.9.x.
-$ cargo build --release --no-default-features -F moka-v09
+$ cargo build --release --no-default-features -F moka-v09,rt-tokio
 ```
+
+**Features to select cache products:**
 
 | Feature       | Enabled Cache Product |
 |:--------------|:----------------------|
-| `moka-v010`   | [Moka](https://crates.io/crates/moka) v0.11.x (Enabled by default) |
+| `moka-v012`   | [Moka](https://crates.io/crates/moka) v0.12.x (Enabled by default) |
+| `moka-v011`   |  Moka v0.11.x |
 | `moka-v010`   |  Moka v0.10.x |
 | `moka-v09`    |  Moka v0.9.x |
 | `moka-v08`    |  Moka v0.8.x |
@@ -59,10 +62,18 @@ $ cargo build --release --no-default-features -F moka-v09
 | `quick_cache` | [quick_cache](https://crates.io/crates/quick_cache) |
 | `stretto`     | [Stretto](https://crates.io/crates/stretto) |
 
+**Features to select async runtime:**
+
+| Feature        | Enabled Cache Product |
+|:---------------|:----------------------|
+| `rt-tokio`     | [Tokio](https://crates.io/crates/tokio) (Enabled by default) |
+| `rt-async-std` | [async-std](https://crates.io/crates/async-std) |
+
 NOTES:
 
-- `moka-v011` is enabled by default.
-- `moka-v011`, `moka-v010`, `moka-v09` and `moka-v08` are mutually exclusive.
+- `moka-v012` and `rt-tokio` are enabled by default.
+- `moka-v012`, `moka-v011`, `moka-v010`, `moka-v09` and `moka-v08` are mutually
+  exclusive.
 - `mini-moka` cannot be enabled when `moka-v09` or `moka-v08` is enabled.
 
 

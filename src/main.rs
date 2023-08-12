@@ -7,9 +7,23 @@ use mokabench::{
 
 use clap::{Arg, Command};
 
+#[cfg(feature = "rt-tokio")]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    run("Tokio").await
+}
+
+#[cfg(feature = "rt-async-std")]
+#[async_std::main]
+async fn main() -> anyhow::Result<()> {
+    run("async-std").await
+}
+
+async fn run(async_rt_name: &str) -> anyhow::Result<()> {
     let (trace_files, mut config) = create_config()?;
+
+    println!("Async runtime: {async_rt_name}");
+
     for trace_file in trace_files {
         config.trace_file = trace_file;
         println!("{config:?}");

@@ -2,6 +2,7 @@ use super::{AsyncGetOrInsertOnce, InitClosureError1, InitClosureError2, InitClos
 use crate::cache::{Key, Value};
 use crate::moka::future::Cache;
 use crate::{
+    async_rt_helper as rt,
     cache::{self, AsyncCacheDriver, Counters, DefaultHasher},
     config::Config,
     parser::TraceEntry,
@@ -253,7 +254,7 @@ where
             count += 1;
 
             if count % 500 == 0 {
-                tokio::task::yield_now().await;
+                rt::yield_now().await;
             }
         }
     }

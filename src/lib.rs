@@ -31,6 +31,7 @@ pub(crate) use moka09 as moka;
 #[cfg(feature = "moka-v08")]
 pub(crate) use moka08 as moka;
 
+mod async_rt_helper;
 mod cache;
 pub mod config;
 mod eviction_counters;
@@ -43,6 +44,7 @@ pub(crate) use eviction_counters::EvictionCounters;
 pub use report::Report;
 pub use trace_file::TraceFile;
 
+use async_rt_helper as rt;
 use cache::{
     moka_driver::{
         async_cache::MokaAsyncCache, sync_cache::MokaSyncCache, sync_segmented::MokaSegmentedCache,
@@ -339,7 +341,7 @@ async fn run_multi_tasks(
             let ch = receive.clone();
             let rb = Arc::clone(&report_builder);
 
-            tokio::task::spawn(async move {
+            rt::spawn(async move {
                 let mut report = rb.build();
                 while let Ok(commands) = ch.recv() {
                     cache::process_commands_async(commands, &mut cache, &mut report).await;
@@ -356,9 +358,14 @@ async fn run_multi_tasks(
     // Merge the reports into one.
     let mut report = report_builder.build();
     report.duration = Some(elapsed);
-    reports
-        .iter()
-        .for_each(|r| report.merge(r.as_ref().expect("Failed")));
+
+    for r in reports {
+        #[cfg(feature = "rt-tokio")]
+        report.merge(&r.expect("Failed"));
+
+        #[cfg(feature = "rt-async-std")]
+        report.merge(&r);
+    }
 
     if config.is_eviction_listener_enabled() {
         report.add_eviction_counts(cache_driver.eviction_counters().as_ref().unwrap());

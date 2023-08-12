@@ -6,17 +6,20 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["moka-v012"]
+default = ["moka-v012", "rt-tokio"]
 
-moka-v012 = ["moka012"]
-moka-v011 = ["moka011"]
-moka-v010 = ["moka010"]
-moka-v09 = ["moka09"]
-moka-v08 = ["moka08"]
+moka-v012 = ["dep:moka012"]
+moka-v011 = ["dep:moka011"]
+moka-v010 = ["dep:moka010"]
+moka-v09 = ["dep:moka09"]
+moka-v08 = ["dep:moka08"]
 hashlink = ["dep:hashlink"]
 mini-moka = ["dep:mini-moka"]
 quick_cache = ["dep:quick_cache"]
 stretto = ["dep:stretto"]
+
+rt-tokio = ["dep:tokio"]
+rt-async-std = ["dep:async-std"]
 
 [dependencies]
 anyhow = "1.0.56"
@@ -31,7 +34,8 @@ thiserror = "1.0.38"
 xxhash-rust = { version = "0.8.6", features = ["xxh3"] }
 
 # Async Runtime
-tokio = { version = "1.25.0", features = ["rt-multi-thread", "macros" ] }
+tokio = { optional = true, version = "1.25.0", features = ["rt-multi-thread", "macros" ] }
+async-std = { optional = true, version = "1.12.0", features = ["attributes"] }
 
 # Cache implementations
 hashlink = { optional = true, version = "0.8.1" }
