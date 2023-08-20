@@ -130,15 +130,12 @@ impl<I> MokaAsyncCache<I> {
 
         #[cfg(feature = "moka-v012")]
         {
-            use crate::moka::future::FutureExt;
-
             if config.is_eviction_listener_enabled() {
                 let c0 = Arc::new(EvictionCounters::default());
                 let c1 = Arc::clone(&c0);
 
                 builder = builder.eviction_listener(move |_k, _v, cause| {
                     c1.increment(cause);
-                    async {}.boxed()
                 });
 
                 eviction_counters = Some(c0);
