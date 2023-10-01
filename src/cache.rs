@@ -150,7 +150,7 @@ const VALUE_LEN: usize = 128;
 
 pub(crate) fn make_value(config: &Config, key: usize, req_id: usize) -> Value {
     let policy_weight = if config.size_aware {
-        let mut hasher = DefaultHasher::default().build_hasher();
+        let mut hasher = DefaultHasher.build_hasher();
         req_id.hash(&mut hasher);
         // len will be [4 .. 2^16)
         (hasher.finish() as u16).max(4) as u32

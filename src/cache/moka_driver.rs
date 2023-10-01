@@ -3,8 +3,40 @@ use thiserror::Error;
 
 use crate::{parser::TraceEntry, Report};
 
+#[cfg_attr(feature = "moka-v012", path = "moka_driver_v2/async_cache.rs")]
+#[cfg_attr(
+    any(
+        feature = "moka-v08",
+        feature = "moka-v09",
+        feature = "moka-v010",
+        feature = "moka-v011"
+    ),
+    path = "moka_driver_v1/async_cache.rs"
+)]
 pub(crate) mod async_cache;
+
+#[cfg_attr(feature = "moka-v012", path = "moka_driver_v2/sync_cache.rs")]
+#[cfg_attr(
+    any(
+        feature = "moka-v08",
+        feature = "moka-v09",
+        feature = "moka-v010",
+        feature = "moka-v011"
+    ),
+    path = "moka_driver_v1/sync_cache.rs"
+)]
 pub(crate) mod sync_cache;
+
+#[cfg_attr(feature = "moka-v012", path = "moka_driver_v2/sync_segmented.rs")]
+#[cfg_attr(
+    any(
+        feature = "moka-v08",
+        feature = "moka-v09",
+        feature = "moka-v010",
+        feature = "moka-v011"
+    ),
+    path = "moka_driver_v1/sync_segmented.rs"
+)]
 pub(crate) mod sync_segmented;
 
 pub(crate) trait GetOrInsertOnce {

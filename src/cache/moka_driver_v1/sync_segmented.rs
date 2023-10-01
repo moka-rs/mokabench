@@ -1,9 +1,10 @@
+//! Driver for `moka::sync::SegmentedCache` v0.11.x or earlier.
+
 use super::{GetOrInsertOnce, InitClosureError1, InitClosureError2, InitClosureType};
-use crate::cache::{Key, Value};
-use crate::moka::sync::Cache;
 use crate::{
-    cache::{self, CacheDriver, Counters, DefaultHasher},
+    cache::{self, CacheDriver, Counters, DefaultHasher, Key, Value},
     config::Config,
+    moka::sync::SegmentedCache,
     parser::TraceEntry,
     report::Report,
     EvictionCounters,
@@ -14,14 +15,14 @@ use std::sync::{
     Arc,
 };
 
-pub(crate) struct MokaSyncCache<I> {
+pub(crate) struct MokaSegmentedCache<I> {
     config: Arc<Config>,
-    cache: Cache<Key, Value, DefaultHasher>,
+    cache: SegmentedCache<Key, Value, DefaultHasher>,
     insert_once_impl: I,
     eviction_counters: Option<Arc<EvictionCounters>>,
 }
 
-impl<I: Clone> Clone for MokaSyncCache<I> {
+impl<I: Clone> Clone for MokaSegmentedCache<I> {
     fn clone(&self) -> Self {
         Self {
             config: Arc::clone(&self.config),
@@ -32,9 +33,10 @@ impl<I: Clone> Clone for MokaSyncCache<I> {
     }
 }
 
-impl MokaSyncCache<GetWith> {
-    pub(crate) fn new(config: &Config, max_cap: u64, init_cap: usize) -> Self {
-        let (cache, eviction_counters) = Self::create_cache(config, max_cap, init_cap);
+impl MokaSegmentedCache<GetWith> {
+    pub(crate) fn new(config: &Config, max_cap: u64, init_cap: usize, num_segments: usize) -> Self {
+        let (cache, eviction_counters) =
+            Self::create_cache(config, max_cap, init_cap, num_segments);
         let config = Arc::new(config.clone());
         let insert_once_impl = GetWith {
             cache: cache.clone(),
@@ -54,9 +56,15 @@ impl MokaSyncCache<GetWith> {
 use entry_api::EntryOrInsertWith;
 
 #[cfg(not(any(feature = "moka-v08", feature = "moka-v09")))]
-impl MokaSyncCache<EntryOrInsertWith> {
-    pub(crate) fn with_entry_api(config: &Config, max_cap: u64, init_cap: usize) -> Self {
-        let (cache, eviction_counters) = Self::create_cache(config, max_cap, init_cap);
+impl MokaSegmentedCache<EntryOrInsertWith> {
+    pub(crate) fn with_entry_api(
+        config: &Config,
+        max_cap: u64,
+        init_cap: usize,
+        num_segments: usize,
+    ) -> Self {
+        let (cache, eviction_counters) =
+            Self::create_cache(config, max_cap, init_cap, num_segments);
         let config = Arc::new(config.clone());
         let insert_once_impl = EntryOrInsertWith::new(cache.clone(), Arc::clone(&config));
 
@@ -69,16 +77,17 @@ impl MokaSyncCache<EntryOrInsertWith> {
     }
 }
 
-impl<I> MokaSyncCache<I> {
+impl<I> MokaSegmentedCache<I> {
     fn create_cache(
         config: &Config,
         max_cap: u64,
         init_cap: usize,
+        num_segments: usize,
     ) -> (
-        Cache<Key, Value, DefaultHasher>,
+        SegmentedCache<Key, Value, DefaultHasher>,
         Option<Arc<EvictionCounters>>,
     ) {
-        let mut builder = Cache::builder()
+        let mut builder = SegmentedCache::builder(num_segments)
             .max_capacity(max_cap)
             .initial_capacity(init_cap);
 
@@ -155,7 +164,7 @@ impl<I> MokaSyncCache<I> {
                 eviction_counters = None;
             }
 
-            cache = builder.build_with_hasher(DefaultHasher::default());
+            cache = builder.build_with_hasher(DefaultHasher);
         }
 
         (cache, eviction_counters)
@@ -172,7 +181,7 @@ impl<I> MokaSyncCache<I> {
     }
 }
 
-impl<I: GetOrInsertOnce> CacheDriver<TraceEntry> for MokaSyncCache<I> {
+impl<I: GetOrInsertOnce> CacheDriver<TraceEntry> for MokaSegmentedCache<I> {
     fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
@@ -247,7 +256,7 @@ impl<I: GetOrInsertOnce> CacheDriver<TraceEntry> for MokaSyncCache<I> {
 //
 #[derive(Clone)]
 pub(crate) struct GetWith {
-    cache: Cache<Key, Value, DefaultHasher>,
+    cache: SegmentedCache<Key, Value, DefaultHasher>,
     config: Arc<Config>,
 }
 
@@ -327,12 +336,15 @@ mod entry_api {
 
     #[derive(Clone)]
     pub(crate) struct EntryOrInsertWith {
-        cache: Cache<Key, Value, DefaultHasher>,
+        cache: SegmentedCache<Key, Value, DefaultHasher>,
         config: Arc<Config>,
     }
 
     impl EntryOrInsertWith {
-        pub(crate) fn new(cache: Cache<Key, Value, DefaultHasher>, config: Arc<Config>) -> Self {
+        pub(crate) fn new(
+            cache: SegmentedCache<Key, Value, DefaultHasher>,
+            config: Arc<Config>,
+        ) -> Self {
             Self { cache, config }
         }
     }

@@ -1,15 +1,23 @@
 #[cfg(all(
-    feature = "moka-v011",
-    any(feature = "moka-v010", feature = "moka-v09", feature = "moka-v08")
+    feature = "moka-v012",
+    any(
+        feature = "moka-v011",
+        feature = "moka-v010",
+        feature = "moka-v09",
+        feature = "moka-v08"
+    )
 ))]
 compile_error!(
-    "You cannot enable `moka-v010`, `moka-v09` and/or `moka-v8` features while `moka-v011` is enabled.\n\
+    "You cannot enable `moka-v011`, `moka-v010`, `moka-v09` and/or `moka-v8` features while `moka-v012` is enabled.\n\
                 You might need `--no-default-features`."
 );
 
 use std::io::prelude::*;
 use std::sync::Arc;
 use std::{fs::File, io::BufReader, time::Instant};
+
+#[cfg(feature = "moka-v012")]
+pub(crate) use moka012 as moka;
 
 #[cfg(feature = "moka-v011")]
 pub(crate) use moka011 as moka;
@@ -23,6 +31,7 @@ pub(crate) use moka09 as moka;
 #[cfg(feature = "moka-v08")]
 pub(crate) use moka08 as moka;
 
+mod async_rt_helper;
 mod cache;
 pub mod config;
 mod eviction_counters;
@@ -35,6 +44,7 @@ pub(crate) use eviction_counters::EvictionCounters;
 pub use report::Report;
 pub use trace_file::TraceFile;
 
+use async_rt_helper as rt;
 use cache::{
     moka_driver::{
         async_cache::MokaAsyncCache, sync_cache::MokaSyncCache, sync_segmented::MokaSegmentedCache,
@@ -330,11 +340,16 @@ async fn run_multi_tasks(
             let mut cache = cache_driver.clone();
             let ch = receive.clone();
             let rb = Arc::clone(&report_builder);
+            let mut count = 0u32;
 
-            tokio::task::spawn(async move {
+            rt::spawn(async move {
                 let mut report = rb.build();
                 while let Ok(commands) = ch.recv() {
                     cache::process_commands_async(commands, &mut cache, &mut report).await;
+                    count += 1;
+                    if count % 10_000 == 0 {
+                        tokio::task::yield_now().await;
+                    }
                 }
                 report
             })
@@ -348,9 +363,14 @@ async fn run_multi_tasks(
     // Merge the reports into one.
     let mut report = report_builder.build();
     report.duration = Some(elapsed);
-    reports
-        .iter()
-        .for_each(|r| report.merge(r.as_ref().expect("Failed")));
+
+    for r in reports {
+        #[cfg(feature = "rt-tokio")]
+        report.merge(&r.expect("Failed"));
+
+        #[cfg(feature = "rt-async-std")]
+        report.merge(&r);
+    }
 
     if config.is_eviction_listener_enabled() {
         report.add_eviction_counts(cache_driver.eviction_counters().as_ref().unwrap());

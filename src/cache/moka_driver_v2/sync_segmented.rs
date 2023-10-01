@@ -50,10 +50,8 @@ impl MokaSegmentedCache<GetWith> {
     }
 }
 
-#[cfg(not(any(feature = "moka-v08", feature = "moka-v09")))]
 use entry_api::EntryOrInsertWith;
 
-#[cfg(not(any(feature = "moka-v08", feature = "moka-v09")))]
 impl MokaSegmentedCache<EntryOrInsertWith> {
     pub(crate) fn with_entry_api(
         config: &Config,
@@ -90,20 +88,9 @@ impl<I> MokaSegmentedCache<I> {
             .initial_capacity(init_cap);
 
         if config.per_key_expiration {
-            if cfg!(any(
-                feature = "moka-v08",
-                feature = "moka-v09",
-                feature = "moka-v010"
-            )) {
-                unreachable!();
-            }
-
-            #[cfg(not(any(feature = "moka-v08", feature = "moka-v09", feature = "moka-v010")))]
-            {
-                use crate::cache::moka_driver::expiry::MokabenchExpiry;
-                let expiry = MokabenchExpiry::new(config.ttl, config.tti);
-                builder = builder.expire_after(expiry);
-            }
+            use crate::cache::moka_driver::expiry::MokabenchExpiry;
+            let expiry = MokabenchExpiry::new(config.ttl, config.tti);
+            builder = builder.expire_after(expiry);
         }
 
         if let Some(ttl) = config.ttl {
@@ -124,47 +111,22 @@ impl<I> MokaSegmentedCache<I> {
             builder = builder.weigher(|_k, (s, _v)| *s);
         }
 
-        let cache;
         let eviction_counters;
 
-        #[cfg(feature = "moka-v08")]
-        {
-            cache = builder.build_with_hasher(DefaultHasher::default());
+        if config.is_eviction_listener_enabled() {
+            let c0 = Arc::new(EvictionCounters::default());
+            let c1 = Arc::clone(&c0);
+
+            builder = builder.eviction_listener(move |_k, _v, cause| {
+                c1.increment(cause);
+            });
+
+            eviction_counters = Some(c0);
+        } else {
             eviction_counters = None;
         }
 
-        #[cfg(not(feature = "moka-v08"))]
-        {
-            use crate::config::RemovalNotificationMode;
-            use crate::moka::notification::{Configuration, DeliveryMode};
-
-            if config.is_eviction_listener_enabled() {
-                let c0 = Arc::new(EvictionCounters::default());
-                let c1 = Arc::clone(&c0);
-
-                let mode = match config.eviction_listener {
-                    RemovalNotificationMode::Immediate => DeliveryMode::Immediate,
-                    RemovalNotificationMode::Queued => DeliveryMode::Queued,
-                    RemovalNotificationMode::None => unreachable!(),
-                };
-
-                let conf = Configuration::builder().delivery_mode(mode).build();
-
-                builder = builder.eviction_listener_with_conf(
-                    move |_k, _v, cause| {
-                        c1.increment(cause);
-                    },
-                    conf,
-                );
-
-                eviction_counters = Some(c0);
-            } else {
-                eviction_counters = None;
-            }
-
-            cache = builder.build_with_hasher(DefaultHasher::default());
-        }
-
+        let cache = builder.build_with_hasher(DefaultHasher);
         (cache, eviction_counters)
     }
 

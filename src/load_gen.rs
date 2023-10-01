@@ -17,7 +17,9 @@ where
     let mut ops = Vec::with_capacity(max_chunk_size);
     for line_result in chunk {
         let (line_number, line) = line_result?;
-        let Some(entry) = parser.parse(&line, line_number)? else { continue };
+        let Some(entry) = parser.parse(&line, line_number)? else {
+            continue;
+        };
         *counter += 1;
         if config.invalidate_all && *counter % 100_000 == 0 {
             ops.push(Command::InvalidateAll);

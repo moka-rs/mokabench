@@ -1,21 +1,25 @@
 [package]
 name = "mokabench"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["moka-v011"]
+default = ["moka-v012", "rt-tokio"]
 
-moka-v011 = ["moka011"]
-moka-v010 = ["moka010"]
-moka-v09 = ["moka09"]
-moka-v08 = ["moka08"]
+moka-v012 = ["dep:moka012"]
+moka-v011 = ["dep:moka011"]
+moka-v010 = ["dep:moka010"]
+moka-v09 = ["dep:moka09"]
+moka-v08 = ["dep:moka08"]
 hashlink = ["dep:hashlink"]
 mini-moka = ["dep:mini-moka"]
 quick_cache = ["dep:quick_cache"]
 stretto = ["dep:stretto"]
+
+rt-tokio = ["dep:tokio"]
+rt-async-std = ["dep:async-std"]
 
 [dependencies]
 anyhow = "1.0.56"
@@ -24,13 +28,14 @@ async-trait = "0.1.64"
 clap = "3.2.23"
 crossbeam-channel = "0.5.6"
 futures-util = "0.3.26"
-itertools = "0.10.5"
+itertools = "0.11.0"
 parking_lot = "0.12.1"
 thiserror = "1.0.38"
 xxhash-rust = { version = "0.8.6", features = ["xxh3"] }
 
 # Async Runtime
-tokio = { version = "1.25.0", features = ["rt-multi-thread", "macros" ] }
+tokio = { optional = true, version = "1.25.0", features = ["rt-multi-thread", "macros" ] }
+async-std = { optional = true, version = "1.12.0", features = ["attributes"] }
 
 # Cache implementations
 hashlink = { optional = true, version = "0.8.1" }
@@ -38,25 +43,31 @@ mini-moka = { optional = true, version = "0.10.0" }
 quick_cache = { optional = true, version = "0.2.1" }
 stretto = { optional = true, version = "0.7.1" }
 
+[dependencies.moka012]
+package = "moka"
+optional = true
+version = "0.12.0"
+# git = "https://github.com/moka-rs/moka"
+# branch = "main"
+# path = "../moka"
+features = ["future", "sync"]
+
 [dependencies.moka011]
 package = "moka"
 optional = true
-version = "0.11.0"
-# git = "https://github.com/moka-rs/moka"
-# branch = "master"
-# path = "../moka"
+version = "0.11.3"
 features = ["future"]
 
 [dependencies.moka010]
 package = "moka"
 optional = true
-version = "0.10.2"
+version = "0.10.4"
 features = ["future"]
 
 [dependencies.moka09]
 package = "moka"
 optional = true
-version = "0.9.7"
+version = "0.9.9"
 features = ["future", "dash"]
 
 [dependencies.moka08]

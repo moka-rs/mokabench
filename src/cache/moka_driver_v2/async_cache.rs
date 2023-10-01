@@ -1,7 +1,10 @@
+//! Driver for `moka::future::Cache` v0.12.0 or later.
+
 use super::{AsyncGetOrInsertOnce, InitClosureError1, InitClosureError2, InitClosureType};
 use crate::cache::{Key, Value};
 use crate::moka::future::Cache;
 use crate::{
+    async_rt_helper as rt,
     cache::{self, AsyncCacheDriver, Counters, DefaultHasher},
     config::Config,
     parser::TraceEntry,
@@ -51,10 +54,8 @@ impl MokaAsyncCache<GetWith> {
     }
 }
 
-#[cfg(not(any(feature = "moka-v08", feature = "moka-v09")))]
 use entry_api::EntryOrInsertWith;
 
-#[cfg(not(any(feature = "moka-v08", feature = "moka-v09")))]
 impl MokaAsyncCache<EntryOrInsertWith> {
     pub(crate) fn with_entry_api(config: &Config, max_cap: u64, init_cap: usize) -> Self {
         let (cache, eviction_counters) = Self::create_cache(config, max_cap, init_cap);
@@ -84,20 +85,9 @@ impl<I> MokaAsyncCache<I> {
             .initial_capacity(init_cap);
 
         if config.per_key_expiration {
-            if cfg!(any(
-                feature = "moka-v08",
-                feature = "moka-v09",
-                feature = "moka-v010"
-            )) {
-                unreachable!();
-            }
-
-            #[cfg(not(any(feature = "moka-v08", feature = "moka-v09", feature = "moka-v010")))]
-            {
-                use crate::cache::moka_driver::expiry::MokabenchExpiry;
-                let expiry = MokabenchExpiry::new(config.ttl, config.tti);
-                builder = builder.expire_after(expiry);
-            }
+            use crate::cache::moka_driver::expiry::MokabenchExpiry;
+            let expiry = MokabenchExpiry::new(config.ttl, config.tti);
+            builder = builder.expire_after(expiry);
         }
 
         if let Some(ttl) = config.ttl {
@@ -118,39 +108,27 @@ impl<I> MokaAsyncCache<I> {
             builder = builder.weigher(|_k, (s, _v)| *s);
         }
 
-        let cache;
         let eviction_counters;
 
-        #[cfg(feature = "moka-v08")]
-        {
-            cache = builder.build_with_hasher(DefaultHasher::default());
+        if config.is_eviction_listener_enabled() {
+            let c0 = Arc::new(EvictionCounters::default());
+            let c1 = Arc::clone(&c0);
+
+            builder = builder.eviction_listener(move |_k, _v, cause| {
+                c1.increment(cause);
+            });
+
+            eviction_counters = Some(c0);
+        } else {
             eviction_counters = None;
         }
 
-        #[cfg(not(feature = "moka-v08"))]
-        {
-            if config.is_eviction_listener_enabled() {
-                let c0 = Arc::new(EvictionCounters::default());
-                let c1 = Arc::clone(&c0);
-
-                builder =
-                    builder.eviction_listener_with_queued_delivery_mode(move |_k, _v, cause| {
-                        c1.increment(cause);
-                    });
-
-                eviction_counters = Some(c0);
-            } else {
-                eviction_counters = None;
-            }
-
-            cache = builder.build_with_hasher(DefaultHasher::default());
-        }
-
+        let cache = builder.build_with_hasher(DefaultHasher);
         (cache, eviction_counters)
     }
 
-    fn get(&self, key: usize) -> bool {
-        self.cache.get(&key).is_some()
+    async fn get(&self, key: usize) -> bool {
+        self.cache.get(&key).await.is_some()
     }
 
     async fn insert(&self, key: usize, req_id: usize) {
@@ -170,7 +148,7 @@ where
         let mut req_id = entry.line_number();
 
         for block in entry.range() {
-            if self.get(block) {
+            if self.get(block).await {
                 counters.read_hit();
             } else {
                 self.insert(block, req_id).await;
@@ -226,7 +204,7 @@ where
             count += 1;
 
             if count % 500 == 0 {
-                tokio::task::yield_now().await;
+                rt::yield_now().await;
             }
         }
     }
@@ -322,7 +300,6 @@ impl GetWith {
 //
 // EntryOrInsertWith (implements GetOrInsertOnce)
 //
-#[cfg(not(any(feature = "moka-v08", feature = "moka-v09")))]
 mod entry_api {
     use super::*;
 
