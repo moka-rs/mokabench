@@ -113,24 +113,6 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
     }
 
     for num_clients in num_clients_slice {
-        if cfg!(feature = "moka-v012")
-            && config.eviction_listener == RemovalNotificationMode::Queued
-        {
-            eprintln!(
-                "WARNING: eviction_listener = \"queued\" is not supported by \
-                    the async cache. \"immediate\" mode will be used for it."
-            );
-        } else if cfg!(any(
-            feature = "moka-v09",
-            feature = "moka-v010",
-            feature = "moka-v011"
-        )) && config.eviction_listener == RemovalNotificationMode::Immediate
-        {
-            eprintln!(
-                "WARNING: eviction_listener = \"immediate\" is not supported by \
-                    the async cache. \"queued\" mode will be used for it."
-            );
-        }
         let report = mokabench::run_multi_tasks_moka_async(config, capacity, *num_clients).await?;
         println!("{}", report.to_csv_record());
     }
@@ -311,11 +293,33 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
     // Since Moka v0.11
     let per_key_expiration = matches.is_present(OPTION_PER_KEY_EXPIRATION);
 
-    let eviction_listener = if cfg!(not(feature = "moka-v08")) {
+    let mut eviction_listener = RemovalNotificationMode::None;
+
+    if cfg!(not(feature = "moka-v08")) {
         if let Some(v) = matches.value_of(OPTION_EVICTION_LISTENER) {
             match v {
-                "immediate" => RemovalNotificationMode::Immediate,
-                "queued" => RemovalNotificationMode::Queued,
+                "immediate" => {
+                    eviction_listener = RemovalNotificationMode::Immediate;
+                    if cfg!(any(
+                        feature = "moka-v09",
+                        feature = "moka-v010",
+                        feature = "moka-v011"
+                    )) {
+                        eprintln!(
+                            "WARNING: eviction_listener = \"immediate\" is not supported by \
+                            the async cache. \"queued\" mode will be used for it."
+                        );
+                    }
+                }
+                "queued" => {
+                    eviction_listener = RemovalNotificationMode::Queued;
+                    if cfg!(feature = "moka-v012") {
+                        eprintln!(
+                            "WARNING: eviction_listener = \"queued\" is not supported by \
+                            the async cache. \"immediate\" mode will be used for it."
+                        );
+                    }
+                }
                 _ => {
                     anyhow::bail!(
                         r#"eviction-listener must be "immediate" or "queued", but got "{}""#,
@@ -323,12 +327,8 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
                     );
                 }
             }
-        } else {
-            RemovalNotificationMode::None
         }
-    } else {
-        RemovalNotificationMode::None
-    };
+    }
 
     if !entry_api && insert_once && cfg!(not(any(feature = "moka-v08", feature = "moka-v09"))) {
         eprintln!("\nWARNING: Testing Moka's entry API is disabled by default. Use --entry-api to enable it.\n");

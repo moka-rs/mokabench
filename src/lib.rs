@@ -340,11 +340,16 @@ async fn run_multi_tasks(
             let mut cache = cache_driver.clone();
             let ch = receive.clone();
             let rb = Arc::clone(&report_builder);
+            let mut count = 0u32;
 
             rt::spawn(async move {
                 let mut report = rb.build();
                 while let Ok(commands) = ch.recv() {
                     cache::process_commands_async(commands, &mut cache, &mut report).await;
+                    count += 1;
+                    if count % 10_000 == 0 {
+                        tokio::task::yield_now().await;
+                    }
                 }
                 report
             })

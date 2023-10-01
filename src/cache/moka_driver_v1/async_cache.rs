@@ -1,26 +1,31 @@
-use super::{GetOrInsertOnce, InitClosureError1, InitClosureError2, InitClosureType};
+//! Driver for `moka::future::Cache` v0.11.x or earlier.
+
+use super::{AsyncGetOrInsertOnce, InitClosureError1, InitClosureError2, InitClosureType};
+use crate::cache::{Key, Value};
+use crate::moka::future::Cache;
 use crate::{
-    cache::{self, CacheDriver, Counters, DefaultHasher, Key, Value},
+    async_rt_helper as rt,
+    cache::{self, AsyncCacheDriver, Counters, DefaultHasher},
     config::Config,
-    moka::sync::SegmentedCache,
     parser::TraceEntry,
     report::Report,
     EvictionCounters,
 };
 
+use async_trait::async_trait;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
 
-pub(crate) struct MokaSegmentedCache<I> {
+pub struct MokaAsyncCache<I> {
     config: Arc<Config>,
-    cache: SegmentedCache<Key, Value, DefaultHasher>,
+    cache: Cache<Key, Value, DefaultHasher>,
     insert_once_impl: I,
     eviction_counters: Option<Arc<EvictionCounters>>,
 }
 
-impl<I: Clone> Clone for MokaSegmentedCache<I> {
+impl<I: Clone> Clone for MokaAsyncCache<I> {
     fn clone(&self) -> Self {
         Self {
             config: Arc::clone(&self.config),
@@ -31,10 +36,9 @@ impl<I: Clone> Clone for MokaSegmentedCache<I> {
     }
 }
 
-impl MokaSegmentedCache<GetWith> {
-    pub(crate) fn new(config: &Config, max_cap: u64, init_cap: usize, num_segments: usize) -> Self {
-        let (cache, eviction_counters) =
-            Self::create_cache(config, max_cap, init_cap, num_segments);
+impl MokaAsyncCache<GetWith> {
+    pub(crate) fn new(config: &Config, max_cap: u64, init_cap: usize) -> Self {
+        let (cache, eviction_counters) = Self::create_cache(config, max_cap, init_cap);
         let config = Arc::new(config.clone());
         let insert_once_impl = GetWith {
             cache: cache.clone(),
@@ -54,15 +58,9 @@ impl MokaSegmentedCache<GetWith> {
 use entry_api::EntryOrInsertWith;
 
 #[cfg(not(any(feature = "moka-v08", feature = "moka-v09")))]
-impl MokaSegmentedCache<EntryOrInsertWith> {
-    pub(crate) fn with_entry_api(
-        config: &Config,
-        max_cap: u64,
-        init_cap: usize,
-        num_segments: usize,
-    ) -> Self {
-        let (cache, eviction_counters) =
-            Self::create_cache(config, max_cap, init_cap, num_segments);
+impl MokaAsyncCache<EntryOrInsertWith> {
+    pub(crate) fn with_entry_api(config: &Config, max_cap: u64, init_cap: usize) -> Self {
+        let (cache, eviction_counters) = Self::create_cache(config, max_cap, init_cap);
         let config = Arc::new(config.clone());
         let insert_once_impl = EntryOrInsertWith::new(cache.clone(), Arc::clone(&config));
 
@@ -75,17 +73,16 @@ impl MokaSegmentedCache<EntryOrInsertWith> {
     }
 }
 
-impl<I> MokaSegmentedCache<I> {
+impl<I> MokaAsyncCache<I> {
     fn create_cache(
         config: &Config,
         max_cap: u64,
         init_cap: usize,
-        num_segments: usize,
     ) -> (
-        SegmentedCache<Key, Value, DefaultHasher>,
+        Cache<Key, Value, DefaultHasher>,
         Option<Arc<EvictionCounters>>,
     ) {
-        let mut builder = SegmentedCache::builder(num_segments)
+        let mut builder = Cache::builder()
             .max_capacity(max_cap)
             .initial_capacity(init_cap);
 
@@ -129,66 +126,57 @@ impl<I> MokaSegmentedCache<I> {
 
         #[cfg(feature = "moka-v08")]
         {
-            cache = builder.build_with_hasher(DefaultHasher);
+            cache = builder.build_with_hasher(DefaultHasher::default());
             eviction_counters = None;
         }
 
         #[cfg(not(feature = "moka-v08"))]
         {
-            use crate::config::RemovalNotificationMode;
-            use crate::moka::notification::{Configuration, DeliveryMode};
-
             if config.is_eviction_listener_enabled() {
                 let c0 = Arc::new(EvictionCounters::default());
                 let c1 = Arc::clone(&c0);
 
-                let mode = match config.eviction_listener {
-                    RemovalNotificationMode::Immediate => DeliveryMode::Immediate,
-                    RemovalNotificationMode::Queued => DeliveryMode::Queued,
-                    RemovalNotificationMode::None => unreachable!(),
-                };
-
-                let conf = Configuration::builder().delivery_mode(mode).build();
-
-                builder = builder.eviction_listener_with_conf(
-                    move |_k, _v, cause| {
+                builder =
+                    builder.eviction_listener_with_queued_delivery_mode(move |_k, _v, cause| {
                         c1.increment(cause);
-                    },
-                    conf,
-                );
+                    });
 
                 eviction_counters = Some(c0);
             } else {
                 eviction_counters = None;
             }
 
-            cache = builder.build_with_hasher(DefaultHasher);
+            cache = builder.build_with_hasher(DefaultHasher::default());
         }
 
         (cache, eviction_counters)
     }
 
-    fn get(&self, key: &usize) -> bool {
-        self.cache.get(key).is_some()
+    fn get(&self, key: usize) -> bool {
+        self.cache.get(&key).is_some()
     }
 
-    fn insert(&self, key: usize, req_id: usize) {
+    async fn insert(&self, key: usize, req_id: usize) {
         let value = cache::make_value(&self.config, key, req_id);
-        cache::sleep_thread_for_insertion(&self.config);
-        self.cache.insert(key, value);
+        cache::sleep_task_for_insertion(&self.config).await;
+        self.cache.insert(key, value).await;
     }
 }
 
-impl<I: GetOrInsertOnce> CacheDriver<TraceEntry> for MokaSegmentedCache<I> {
-    fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
+#[async_trait]
+impl<I> AsyncCacheDriver<TraceEntry> for MokaAsyncCache<I>
+where
+    I: AsyncGetOrInsertOnce + Send + Sync,
+{
+    async fn get_or_insert(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
 
         for block in entry.range() {
-            if self.get(&block) {
+            if self.get(block) {
                 counters.read_hit();
             } else {
-                self.insert(block, req_id);
+                self.insert(block, req_id).await;
                 counters.inserted();
                 counters.read_missed();
             }
@@ -198,16 +186,18 @@ impl<I: GetOrInsertOnce> CacheDriver<TraceEntry> for MokaSegmentedCache<I> {
         counters.add_to_report(report);
     }
 
-    fn get_or_insert_once(&mut self, entry: &TraceEntry, report: &mut Report) {
-        self.insert_once_impl.get_or_insert_once(entry, report);
+    async fn get_or_insert_once(&mut self, entry: &TraceEntry, report: &mut Report) {
+        self.insert_once_impl
+            .get_or_insert_once(entry, report)
+            .await;
     }
 
-    fn update(&mut self, entry: &TraceEntry, report: &mut Report) {
+    async fn update(&mut self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
 
         for block in entry.range() {
-            self.insert(block, req_id);
+            self.insert(block, req_id).await;
             counters.inserted();
             req_id += 1;
         }
@@ -215,9 +205,9 @@ impl<I: GetOrInsertOnce> CacheDriver<TraceEntry> for MokaSegmentedCache<I> {
         counters.add_to_report(report);
     }
 
-    fn invalidate(&mut self, entry: &TraceEntry) {
+    async fn invalidate(&mut self, entry: &TraceEntry) {
         for block in entry.range() {
-            self.cache.invalidate(&block);
+            self.cache.invalidate(&block).await;
         }
     }
 
@@ -233,13 +223,13 @@ impl<I: GetOrInsertOnce> CacheDriver<TraceEntry> for MokaSegmentedCache<I> {
         }
     }
 
-    fn iterate(&mut self) {
+    async fn iterate(&mut self) {
         let mut count = 0usize;
         for _kv in &self.cache {
             count += 1;
 
             if count % 500 == 0 {
-                std::thread::yield_now();
+                rt::yield_now().await;
             }
         }
     }
@@ -254,12 +244,13 @@ impl<I: GetOrInsertOnce> CacheDriver<TraceEntry> for MokaSegmentedCache<I> {
 //
 #[derive(Clone)]
 pub(crate) struct GetWith {
-    cache: SegmentedCache<Key, Value, DefaultHasher>,
+    cache: Cache<Key, Value, DefaultHasher>,
     config: Arc<Config>,
 }
 
-impl GetOrInsertOnce for GetWith {
-    fn get_or_insert_once(&self, entry: &TraceEntry, report: &mut Report) {
+#[async_trait]
+impl AsyncGetOrInsertOnce for GetWith {
+    async fn get_or_insert_once(&self, entry: &TraceEntry, report: &mut Report) {
         let mut counters = Counters::default();
         let mut req_id = entry.line_number();
         let is_inserted = Arc::new(AtomicBool::default());
@@ -268,8 +259,10 @@ impl GetOrInsertOnce for GetWith {
             {
                 let is_inserted2 = Arc::clone(&is_inserted);
                 match InitClosureType::select(block) {
-                    InitClosureType::GetOrInsert => self.get_with(block, req_id, is_inserted2),
-                    ty => self.try_get_with(ty, block, req_id, is_inserted2),
+                    InitClosureType::GetOrInsert => {
+                        self.get_with(block, req_id, is_inserted2).await
+                    }
+                    ty => self.try_get_with(ty, block, req_id, is_inserted2).await,
                 }
             }
 
@@ -288,15 +281,17 @@ impl GetOrInsertOnce for GetWith {
 }
 
 impl GetWith {
-    fn get_with(&self, key: usize, req_id: usize, is_inserted: Arc<AtomicBool>) {
-        self.cache.get_with(key, || {
-            cache::sleep_thread_for_insertion(&self.config);
-            is_inserted.store(true, Ordering::Release);
-            cache::make_value(&self.config, key, req_id)
-        });
+    async fn get_with(&self, key: usize, req_id: usize, is_inserted: Arc<AtomicBool>) {
+        self.cache
+            .get_with(key, async {
+                cache::sleep_task_for_insertion(&self.config).await;
+                is_inserted.store(true, Ordering::Release);
+                cache::make_value(&self.config, key, req_id)
+            })
+            .await;
     }
 
-    fn try_get_with(
+    async fn try_get_with(
         &self,
         ty: InitClosureType,
         key: usize,
@@ -306,19 +301,21 @@ impl GetWith {
         match ty {
             InitClosureType::GetOrTryInsertWithError1 => self
                 .cache
-                .try_get_with(key, || {
-                    cache::sleep_thread_for_insertion(&self.config);
+                .try_get_with(key, async {
+                    cache::sleep_task_for_insertion(&self.config).await;
                     is_inserted.store(true, Ordering::Release);
                     Ok(cache::make_value(&self.config, key, req_id)) as Result<_, InitClosureError1>
                 })
+                .await
                 .is_ok(),
             InitClosureType::GetOrTyyInsertWithError2 => self
                 .cache
-                .try_get_with(key, || {
-                    cache::sleep_thread_for_insertion(&self.config);
+                .try_get_with(key, async {
+                    cache::sleep_task_for_insertion(&self.config).await;
                     is_inserted.store(true, Ordering::Release);
                     Ok(cache::make_value(&self.config, key, req_id)) as Result<_, InitClosureError2>
                 })
+                .await
                 .is_ok(),
             _ => unreachable!(),
         };
@@ -334,28 +331,26 @@ mod entry_api {
 
     #[derive(Clone)]
     pub(crate) struct EntryOrInsertWith {
-        cache: SegmentedCache<Key, Value, DefaultHasher>,
+        cache: Cache<Key, Value, DefaultHasher>,
         config: Arc<Config>,
     }
 
     impl EntryOrInsertWith {
-        pub(crate) fn new(
-            cache: SegmentedCache<Key, Value, DefaultHasher>,
-            config: Arc<Config>,
-        ) -> Self {
+        pub(crate) fn new(cache: Cache<Key, Value, DefaultHasher>, config: Arc<Config>) -> Self {
             Self { cache, config }
         }
     }
 
-    impl GetOrInsertOnce for EntryOrInsertWith {
-        fn get_or_insert_once(&self, entry: &TraceEntry, report: &mut Report) {
+    #[async_trait]
+    impl AsyncGetOrInsertOnce for EntryOrInsertWith {
+        async fn get_or_insert_once(&self, entry: &TraceEntry, report: &mut Report) {
             let mut counters = Counters::default();
             let mut req_id = entry.line_number();
 
             for block in entry.range() {
                 let is_inserted = match InitClosureType::select(block) {
-                    InitClosureType::GetOrInsert => self.entry_or_insert_with(block, req_id),
-                    ty => self.entry_or_try_insert_with(ty, block, req_id),
+                    InitClosureType::GetOrInsert => self.entry_or_insert_with(block, req_id).await,
+                    ty => self.entry_or_try_insert_with(ty, block, req_id).await,
                 };
 
                 if is_inserted {
@@ -372,36 +367,44 @@ mod entry_api {
     }
 
     impl EntryOrInsertWith {
-        fn entry_or_insert_with(&self, key: usize, req_id: usize) -> bool {
+        async fn entry_or_insert_with(&self, key: usize, req_id: usize) -> bool {
             self.cache
                 .entry(key)
-                .or_insert_with(|| {
-                    cache::sleep_thread_for_insertion(&self.config);
+                .or_insert_with(async {
+                    cache::sleep_task_for_insertion(&self.config).await;
                     cache::make_value(&self.config, key, req_id)
                 })
+                .await
                 .is_fresh()
         }
 
-        fn entry_or_try_insert_with(&self, ty: InitClosureType, key: usize, req_id: usize) -> bool {
+        async fn entry_or_try_insert_with(
+            &self,
+            ty: InitClosureType,
+            key: usize,
+            req_id: usize,
+        ) -> bool {
             match ty {
                 InitClosureType::GetOrTryInsertWithError1 => self
                     .cache
                     .entry(key)
-                    .or_try_insert_with(|| {
-                        cache::sleep_thread_for_insertion(&self.config);
+                    .or_try_insert_with(async {
+                        cache::sleep_task_for_insertion(&self.config).await;
                         Ok(cache::make_value(&self.config, key, req_id))
                             as Result<_, InitClosureError1>
                     })
+                    .await
                     .unwrap()
                     .is_fresh(),
                 InitClosureType::GetOrTyyInsertWithError2 => self
                     .cache
                     .entry(key)
-                    .or_try_insert_with(|| {
-                        cache::sleep_thread_for_insertion(&self.config);
+                    .or_try_insert_with(async {
+                        cache::sleep_task_for_insertion(&self.config).await;
                         Ok(cache::make_value(&self.config, key, req_id))
                             as Result<_, InitClosureError2>
                     })
+                    .await
                     .unwrap()
                     .is_fresh(),
                 _ => unreachable!(),
