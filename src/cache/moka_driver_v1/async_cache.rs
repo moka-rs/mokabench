@@ -146,7 +146,7 @@ impl<I> MokaAsyncCache<I> {
                 eviction_counters = None;
             }
 
-            cache = builder.build_with_hasher(DefaultHasher::default());
+            cache = builder.build_with_hasher(DefaultHasher);
         }
 
         (cache, eviction_counters)

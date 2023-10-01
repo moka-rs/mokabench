@@ -111,7 +111,6 @@ impl<I> MokaSegmentedCache<I> {
             builder = builder.weigher(|_k, (s, _v)| *s);
         }
 
-        let cache;
         let eviction_counters;
 
         if config.is_eviction_listener_enabled() {
@@ -127,8 +126,7 @@ impl<I> MokaSegmentedCache<I> {
             eviction_counters = None;
         }
 
-        cache = builder.build_with_hasher(DefaultHasher);
-
+        let cache = builder.build_with_hasher(DefaultHasher);
         (cache, eviction_counters)
     }
 
