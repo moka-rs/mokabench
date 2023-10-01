@@ -4,8 +4,8 @@
 
 ### Added
 
-- Added support for moka v0.12. ([#??](gh-pull-????))
-
+- Added support for moka v0.12. ([#11](gh-pull-0011))
+    - Add crate features `rt-tokio` (default) and `rt-async-std`.
 
 ## Version 0.9.0
 
@@ -127,6 +127,7 @@
     - `enable-invalidate-entries-if`
 
 <!-- Links -->
+[gh-pull-0008]: https://github.com/moka-rs/mokabench/pull/11
 [gh-pull-0008]: https://github.com/moka-rs/mokabench/pull/8
 [gh-pull-0002]: https://github.com/moka-rs/mokabench/pull/2
 [gh-pull-0001]: https://github.com/moka-rs/mokabench/pull/1
