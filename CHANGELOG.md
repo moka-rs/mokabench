@@ -4,21 +4,21 @@
 
 ### Added
 
-- Added support for moka v0.12. ([#11](gh-pull-0011))
+- Added support for moka v0.12. ([#11][gh-pull-0011])
     - Add crate features `rt-tokio` (default) and `rt-async-std`.
 
 ## Version 0.9.0
 
 ### Added
 
-- Added support for moka v0.11. ([#8](gh-pull-0008))
+- Added support for moka v0.11. ([#8][gh-pull-0008])
     - Added a CLI option `--per-key-expiration`.
 
 ## Version 0.8.0
 
 ### Added
 
-- Added support for moka v0.10 and mini-moka v0.10. ([#2](gh-pull-0002))
+- Added support for moka v0.10 and mini-moka v0.10. ([#2][gh-pull-0002])
     - Added a CLI option `--entry-api`.
 
 ### Changed
@@ -127,7 +127,7 @@
     - `enable-invalidate-entries-if`
 
 <!-- Links -->
-[gh-pull-0008]: https://github.com/moka-rs/mokabench/pull/11
+[gh-pull-0011]: https://github.com/moka-rs/mokabench/pull/11
 [gh-pull-0008]: https://github.com/moka-rs/mokabench/pull/8
 [gh-pull-0002]: https://github.com/moka-rs/mokabench/pull/2
 [gh-pull-0001]: https://github.com/moka-rs/mokabench/pull/1
