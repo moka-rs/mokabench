@@ -339,7 +339,7 @@ pub fn run_single(config: &Config, capacity: usize) -> anyhow::Result<Report> {
 fn run_multi_threads(
     config: &Config,
     num_clients: u16,
-    cache_driver: impl CacheDriver<TraceEntry> + Clone + Send + 'static,
+    mut cache_driver: impl CacheDriver<TraceEntry> + Clone + Send + 'static,
     report_builder: ReportBuilder,
     _metrics_names: Option<MetricsNames>,
     pre_process_all_commands: bool,
@@ -422,6 +422,9 @@ fn run_multi_threads(
     report.duration = Some(elapsed);
     reports.iter().for_each(|r| report.merge(r));
 
+    // Ensure all housekeeping tasks are processed.
+    cache_driver.finish();
+
     if config.is_eviction_listener_enabled() {
         report.add_eviction_counts(cache_driver.eviction_counters().as_ref().unwrap());
     }
@@ -436,7 +439,7 @@ fn run_multi_threads(
 async fn run_multi_tasks(
     config: &Config,
     num_clients: u16,
-    cache_driver: impl AsyncCacheDriver<TraceEntry> + Clone + Send + 'static,
+    mut cache_driver: impl AsyncCacheDriver<TraceEntry> + Clone + Send + 'static,
     report_builder: ReportBuilder,
     _metrics_names: Option<MetricsNames>,
     pre_process_all_commands: bool,
@@ -517,6 +520,9 @@ async fn run_multi_tasks(
     reports
         .iter()
         .for_each(|r| report.merge(r.as_ref().expect("Failed")));
+
+    // Ensure all housekeeping tasks are processed.
+    cache_driver.finish();
 
     if config.is_eviction_listener_enabled() {
         report.add_eviction_counts(cache_driver.eviction_counters().as_ref().unwrap());

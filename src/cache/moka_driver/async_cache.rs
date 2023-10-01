@@ -1,6 +1,6 @@
 use super::{AsyncGetOrInsertOnce, InitClosureError1, InitClosureError2, InitClosureType};
 use crate::cache::{Key, Value};
-use crate::moka::future::Cache;
+use crate::moka::future::{Cache, ConcurrentCacheExt};
 use crate::{
     cache::{self, AsyncCacheDriver, Counters, DefaultHasher},
     config::Config,
@@ -15,9 +15,15 @@ use std::sync::{
     Arc,
 };
 
+#[cfg(any(feature = "moka-v08", feature = "moka-v09", feature = "moka-v010"))]
+type CacheImpl = Cache<Key, Value, DefaultHasher>;
+
+#[cfg(not(any(feature = "moka-v08", feature = "moka-v09", feature = "moka-v010")))]
+type CacheImpl = Cache<Key, Value, DefaultHasher, crate::moka::stats::DetailedCacheStats>;
+
 pub struct MokaAsyncCache<I> {
     config: Arc<Config>,
-    cache: Cache<Key, Value, DefaultHasher>,
+    cache: CacheImpl,
     insert_once_impl: I,
     eviction_counters: Option<Arc<EvictionCounters>>,
 }
@@ -75,10 +81,7 @@ impl<I> MokaAsyncCache<I> {
         config: &Config,
         max_cap: u64,
         init_cap: usize,
-    ) -> (
-        Cache<Key, Value, DefaultHasher>,
-        Option<Arc<EvictionCounters>>,
-    ) {
+    ) -> (CacheImpl, Option<Arc<EvictionCounters>>) {
         let mut builder = Cache::builder()
             .max_capacity(max_cap)
             .initial_capacity(init_cap);
@@ -143,12 +146,18 @@ impl<I> MokaAsyncCache<I> {
                 eviction_counters = None;
             }
 
-            #[cfg(not(any(feature = "moka-v09", feature = "moka-v010")))]
+            #[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
             {
-                builder = builder.enable_stats();
+                cache = builder.build_with_hasher(DefaultHasher::default());
             }
 
-            cache = builder.build_with_hasher(DefaultHasher::default());
+            #[cfg(not(any(feature = "moka-v09", feature = "moka-v010")))]
+            {
+                use crate::moka::stats::stats_counter::DetailedStatsCounter;
+                cache = builder
+                    .stats_counter(DetailedStatsCounter::striped())
+                    .build_with_hasher(DefaultHasher::default())
+            }
         }
 
         (cache, eviction_counters)
@@ -240,8 +249,14 @@ where
         self.eviction_counters.as_ref().map(Arc::clone)
     }
 
+    fn finish(&mut self) {
+        for _ in 0..10 {
+            self.cache.sync();
+        }
+    }
+
     #[cfg(not(any(feature = "moka-v08", feature = "moka-v09", feature = "moka-v010")))]
-    fn cache_stats(&self) -> Option<crate::moka::stats::CacheStats> {
+    fn cache_stats(&self) -> Option<crate::moka::stats::DetailedCacheStats> {
         Some(self.cache.stats())
     }
 }
@@ -251,7 +266,7 @@ where
 //
 #[derive(Clone)]
 pub(crate) struct GetWith {
-    cache: Cache<Key, Value, DefaultHasher>,
+    cache: CacheImpl,
     config: Arc<Config>,
 }
 
@@ -338,12 +353,12 @@ mod entry_api {
 
     #[derive(Clone)]
     pub(crate) struct EntryOrInsertWith {
-        cache: Cache<Key, Value, DefaultHasher>,
+        cache: CacheImpl,
         config: Arc<Config>,
     }
 
     impl EntryOrInsertWith {
-        pub(crate) fn new(cache: Cache<Key, Value, DefaultHasher>, config: Arc<Config>) -> Self {
+        pub(crate) fn new(cache: CacheImpl, config: Arc<Config>) -> Self {
             Self { cache, config }
         }
     }

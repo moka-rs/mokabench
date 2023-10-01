@@ -1,8 +1,8 @@
 use super::{GetOrInsertOnce, InitClosureError1, InitClosureError2, InitClosureType};
+use crate::moka::sync::{ConcurrentCacheExt, SegmentedCache};
 use crate::{
     cache::{self, CacheDriver, Counters, DefaultHasher, Key, Value},
     config::Config,
-    moka::sync::SegmentedCache,
     parser::TraceEntry,
     report::Report,
     EvictionCounters,
@@ -13,9 +13,15 @@ use std::sync::{
     Arc,
 };
 
+#[cfg(any(feature = "moka-v08", feature = "moka-v09", feature = "moka-v010"))]
+type CacheImpl = SegmentedCache<Key, Value, DefaultHasher>;
+
+#[cfg(not(any(feature = "moka-v08", feature = "moka-v09", feature = "moka-v010")))]
+type CacheImpl = SegmentedCache<Key, Value, DefaultHasher, crate::moka::stats::DetailedCacheStats>;
+
 pub(crate) struct MokaSegmentedCache<I> {
     config: Arc<Config>,
-    cache: SegmentedCache<Key, Value, DefaultHasher>,
+    cache: CacheImpl,
     insert_once_impl: I,
     eviction_counters: Option<Arc<EvictionCounters>>,
 }
@@ -81,10 +87,7 @@ impl<I> MokaSegmentedCache<I> {
         max_cap: u64,
         init_cap: usize,
         num_segments: usize,
-    ) -> (
-        SegmentedCache<Key, Value, DefaultHasher>,
-        Option<Arc<EvictionCounters>>,
-    ) {
+    ) -> (CacheImpl, Option<Arc<EvictionCounters>>) {
         let mut builder = SegmentedCache::builder(num_segments)
             .max_capacity(max_cap)
             .initial_capacity(init_cap);
@@ -162,12 +165,18 @@ impl<I> MokaSegmentedCache<I> {
                 eviction_counters = None;
             }
 
-            #[cfg(not(any(feature = "moka-v09", feature = "moka-v010")))]
+            #[cfg(any(feature = "moka-v09", feature = "moka-v010"))]
             {
-                builder = builder.enable_stats();
+                cache = builder.build_with_hasher(DefaultHasher::default());
             }
 
-            cache = builder.build_with_hasher(DefaultHasher::default());
+            #[cfg(not(any(feature = "moka-v09", feature = "moka-v010")))]
+            {
+                use crate::moka::stats::stats_counter::DetailedStatsCounter;
+                cache = builder
+                    .stats_counter(DetailedStatsCounter::striped())
+                    .build_with_hasher(DefaultHasher::default())
+            }
         }
 
         (cache, eviction_counters)
@@ -253,8 +262,14 @@ impl<I: GetOrInsertOnce> CacheDriver<TraceEntry> for MokaSegmentedCache<I> {
         self.eviction_counters.as_ref().map(Arc::clone)
     }
 
+    fn finish(&mut self) {
+        for _ in 0..10 {
+            self.cache.sync();
+        }
+    }
+
     #[cfg(not(any(feature = "moka-v08", feature = "moka-v09", feature = "moka-v010")))]
-    fn cache_stats(&self) -> Option<crate::moka::stats::CacheStats> {
+    fn cache_stats(&self) -> Option<crate::moka::stats::DetailedCacheStats> {
         Some(self.cache.stats())
     }
 }
@@ -264,7 +279,7 @@ impl<I: GetOrInsertOnce> CacheDriver<TraceEntry> for MokaSegmentedCache<I> {
 //
 #[derive(Clone)]
 pub(crate) struct GetWith {
-    cache: SegmentedCache<Key, Value, DefaultHasher>,
+    cache: CacheImpl,
     config: Arc<Config>,
 }
 
@@ -344,15 +359,12 @@ mod entry_api {
 
     #[derive(Clone)]
     pub(crate) struct EntryOrInsertWith {
-        cache: SegmentedCache<Key, Value, DefaultHasher>,
+        cache: CacheImpl,
         config: Arc<Config>,
     }
 
     impl EntryOrInsertWith {
-        pub(crate) fn new(
-            cache: SegmentedCache<Key, Value, DefaultHasher>,
-            config: Arc<Config>,
-        ) -> Self {
+        pub(crate) fn new(cache: CacheImpl, config: Arc<Config>) -> Self {
             Self { cache, config }
         }
     }

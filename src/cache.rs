@@ -49,8 +49,10 @@ pub(crate) trait CacheDriver<T> {
         None
     }
 
+    fn finish(&mut self) {}
+
     #[cfg(feature = "moka-v011")]
-    fn cache_stats(&self) -> Option<crate::moka::stats::CacheStats> {
+    fn cache_stats(&self) -> Option<crate::moka::stats::DetailedCacheStats> {
         None
     }
 }
@@ -66,8 +68,10 @@ pub(crate) trait AsyncCacheDriver<T> {
     async fn iterate(&mut self);
     fn eviction_counters(&self) -> Option<Arc<EvictionCounters>>;
 
+    fn finish(&mut self) {}
+
     #[cfg(feature = "moka-v011")]
-    fn cache_stats(&self) -> Option<crate::moka::stats::CacheStats> {
+    fn cache_stats(&self) -> Option<crate::moka::stats::DetailedCacheStats> {
         None
     }
 }
