@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::Context;
 use mokabench::{
     self,
@@ -6,6 +8,16 @@ use mokabench::{
 };
 
 use clap::{Arg, Command};
+
+#[cfg(not(target_env = "msvc"))]
+use jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
+#[cfg(target_env = "msvc")]
+compile_error!("Sorry, Windows MSVC target is not supported because we cannot use jemalloc there");
 
 #[cfg(feature = "rt-tokio")]
 #[tokio::main]
@@ -43,6 +55,8 @@ async fn run(async_rt_name: &str) -> anyhow::Result<()> {
 }
 
 async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<()> {
+    mokabench::run_metrics_exporter(Duration::from_secs(10)).await;
+
     const DEFAULT_NUM_CLIENTS_ARRAY: &[u16] = &[16, 24, 32, 40, 48];
 
     let num_clients_slice: &[u16] = if let Some(n) = &config.num_clients {
@@ -108,7 +122,7 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
     }
 
     for num_clients in num_clients_slice {
-        let report = mokabench::run_multi_threads_moka_sync(config, capacity, *num_clients)?;
+        let report = mokabench::run_multi_threads_moka_sync(config, capacity, *num_clients).await?;
         println!("{}", report.to_csv_record());
     }
 
@@ -120,14 +134,13 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
     let num_segments = 8;
 
     for num_clients in num_clients_slice {
-        let report = mokabench::run_multi_threads_moka_segment(
-            config,
-            capacity,
-            *num_clients,
-            num_segments,
-        )?;
+        let report =
+            mokabench::run_multi_threads_moka_segment(config, capacity, *num_clients, num_segments)
+                .await?;
         println!("{}", report.to_csv_record());
     }
+
+    mokabench::run_metrics_exporter(Duration::from_secs(10)).await;
 
     Ok(())
 }

@@ -1,6 +1,12 @@
 {
     "editor.rulers": [85],
-    "rust-analyzer.cargo.features": ["hashlink", "mini-moka", "quick_cache", "stretto"],
+    "rust-analyzer.cargo.features": [
+        "metrics",
+        "hashlink",
+        "mini-moka",
+        "quick_cache",
+        "stretto"
+    ],
     "rust-analyzer.server.extraEnv": {
         "CARGO_TARGET_DIR": "target/ra"
     },
@@ -15,6 +21,7 @@
         "moka",
         "mokabench",
         "oltp",
+        "statsd",
         "thiserror",
         "Toolchain",
         "unsync"

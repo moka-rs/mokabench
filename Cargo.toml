@@ -2,6 +2,7 @@
 name = "mokabench"
 version = "0.10.0"
 edition = "2021"
+rust-version = "1.66"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -20,6 +21,9 @@ stretto = ["dep:stretto"]
 
 rt-tokio = ["dep:tokio"]
 rt-async-std = ["dep:async-std"]
+
+# Metrics support
+metrics = ["dep:crossbeam-epoch", "dep:metrics", "dep:metrics-exporter-dogstatsd", "dep:once_cell", "dep:tracing", "dep:tracing-subscriber"]
 
 [dependencies]
 anyhow = "1.0.56"
@@ -42,6 +46,15 @@ hashlink = { optional = true, version = "0.8.1" }
 mini-moka = { optional = true, version = "0.10.0" }
 quick_cache = { optional = true, version = "0.2.1" }
 stretto = { optional = true, version = "0.7.1" }
+
+# Metrics support
+crossbeam-epoch = { optional = true, version = "0.9.15" }
+metrics = { optional = true, version = "0.21.1" }
+metrics-exporter-dogstatsd = { optional = true, version = "0.8.0" }
+once_cell = { optional = true, version = "1.18.0" }
+tracing = { optional = true, version = "0.1.37" }
+tracing-subscriber = { optional = true, version = "0.3.17" }
+arc-swap = "1.6.0"
 
 [dependencies.moka012]
 package = "moka"
@@ -75,6 +88,10 @@ package = "moka"
 optional = true
 version = "0.8.6"
 features = ["future", "dash"]
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+jemallocator = "0.5.4"
+jemalloc-ctl = "0.5.4"
 
 # [profile.release]
 # debug=true
