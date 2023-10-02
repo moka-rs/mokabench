@@ -429,7 +429,7 @@ async fn run_multi_tasks(
 }
 
 fn should_pre_process_all_commands() -> bool {
-    cfg!(feature = "metrics")
+    cfg!(not(feature = "metrics"))
 }
 
 fn generate_and_send_commands(
