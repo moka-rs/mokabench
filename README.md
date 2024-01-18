@@ -5,14 +5,32 @@ A load generator for some of the concurrent cache libraries for Rust.
 
 ## Usage
 
-### Install a Rust Toolchain
+### Install the Rust Toolchain
 
 Install a recent stable [Rust toolchain][rustup].
 
+### Clone this Repository and the Submodule
 
-### Download the Trace Datasets
+Clone this repository:
 
-Mokabench uses the following trace datasets from the ARC paper[^1].
+```console
+$ git clone https://github.com/moka-rs/mokabench.git
+$ cd mokabench
+```
+
+Then clone the submodule [`cache-trace`][git-cache-trace], which contains the trace
+datasets. Since these trace datasets are large, use the `--depth 1` option to clone
+only the latest commit.
+
+```console
+$ git submodule init
+$ git submodule update --depth 1 --progress
+```
+
+### Expand the Trace Files
+
+The `cache-trace` submodule has the `arc` directory contains the trace datasets used
+in the ARC paper[^1]. Here are some examples:
 
 | Dataset    | Workload Type | Description |
 |:-----------|:--------------|:------------|
@@ -20,10 +38,35 @@ Mokabench uses the following trace datasets from the ARC paper[^1].
 | `DS1.lis`  | ERP Database  | A database server running at a commercial site running an ERP application on top of a commercial database. |
 | `OLTP.lis` | CODASYL       | References to a CODASYL database for a one hour period. |
 
-Download them from [author's web site][arc-paper-site] and put them into the `./datasets` directory.
+See [the README][git-cache-trace-arc] in `cache-trace/arc` for more details.
 
+They are compressed with [Zstandard][zstd]. Run the following command to expand.
+
+```console
+$ cd cache-trace/arc
+$ zstd -d *.lis.zst
+$ cat spc1likeread.lis.zst.* | zstd -d - > spc1likeread.lis
+```
+
+You may need to install `zstd` first. For example, on Ubuntu:
+
+```console
+$ sudo apt install zstd
+```
+
+or on macOS using Homebrew:
+
+```console
+$ brew install zstd
+```
+
+A future version of Mokabench will support to directly read the trace files
+compressed by Zstandard. (https://github.com/moka-rs/mokabench/issues/13)
+
+[git-cache-trace]: https://github.com/moka-rs/cache-trace
+[git-cache-trace-arc]: https://github.com/moka-rs/cache-trace/tree/main/arc
+[zstd]: https://facebook.github.io/zstd/
 [^1]: "ARC: A Self-Tuning, Low Overhead Replacement Cache" by Nimrod Megiddo and Dharmendra S. Modha.
-
 
 ### Build Mokabench
 
@@ -132,5 +175,4 @@ Mokabench is distributed under the MIT license. See [LICENSE-MIT](LICENSE-MIT) f
 
 <!-- Links -->
 
-[arc-paper-site]: https://researcher.watson.ibm.com/researcher/view_person_subpage.php?id=4700
 [rustup]: https://rustup.rs
