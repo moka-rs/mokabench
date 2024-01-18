@@ -24,7 +24,7 @@ only the latest commit.
 
 ```console
 $ git submodule init
-$ git submodule update --depth 1 --progress
+$ git submodule update --depth 1
 ```
 
 ### Expand the Trace Files

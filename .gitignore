@@ -1,4 +1,5 @@
 .DS_Store
+*.lis
 **/*.rs.bk
 **/*~
 /scripts/
