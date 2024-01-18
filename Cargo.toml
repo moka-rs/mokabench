@@ -46,10 +46,9 @@ stretto = { optional = true, version = "0.7.1" }
 [dependencies.moka012]
 package = "moka"
 optional = true
-version = "0.12.0"
+version = "0.12.3"
 # git = "https://github.com/moka-rs/moka"
 # branch = "main"
-# path = "../moka"
 features = ["future", "sync"]
 
 [dependencies.moka011]

@@ -1,6 +1,6 @@
 .DS_Store
+*.lis
 **/*.rs.bk
 **/*~
-/datasets/
 /scripts/
 /target/
