@@ -19,8 +19,8 @@ $ cd mokabench
 ```
 
 Then clone the submodule [`cache-trace`][git-cache-trace], which contains the trace
-datasets. Since these trace datasets are large, use the `--depth 1` option to clone
-only the latest commit.
+datasets. Since these datasets are very large, use the `--depth 1` option to clone
+only the latest revision.
 
 ```console
 $ git submodule init
@@ -29,8 +29,8 @@ $ git submodule update --depth 1
 
 ### Expand the Trace Files
 
-The `cache-trace` submodule has the `arc` directory contains the trace datasets used
-in the ARC paper[^1]. Here are some examples:
+The `cache-trace` submodule has the `arc` directory. It contains the trace datasets
+used in the ARC paper[^1]. Here are some examples:
 
 | Dataset    | Workload Type | Description |
 |:-----------|:--------------|:------------|
@@ -60,12 +60,13 @@ or on macOS using Homebrew:
 $ brew install zstd
 ```
 
-A future version of Mokabench will support to directly read the trace files
-compressed by Zstandard. (https://github.com/moka-rs/mokabench/issues/13)
+In the future, you will not need to expand the trace files manually. Mokabench will
+add support for directly reading the compressed trace files. ([#13])
 
 [git-cache-trace]: https://github.com/moka-rs/cache-trace
 [git-cache-trace-arc]: https://github.com/moka-rs/cache-trace/tree/main/arc
 [zstd]: https://facebook.github.io/zstd/
+[#13]: https://github.com/moka-rs/mokabench/issues/13
 [^1]: "ARC: A Self-Tuning, Low Overhead Replacement Cache" by Nimrod Megiddo and Dharmendra S. Modha.
 
 ### Build Mokabench
