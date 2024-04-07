@@ -16,12 +16,12 @@ pub struct QuickCache {
 #[derive(Clone)]
 struct CustomWeighter(bool);
 
-impl ::quick_cache::Weighter<usize, (), (u32, Arc<[u8]>)> for CustomWeighter {
-    fn weight(&self, _key: &usize, _version: &(), val: &(u32, Arc<[u8]>)) -> std::num::NonZeroU32 {
+impl ::quick_cache::Weighter<usize, (u32, Arc<[u8]>)> for CustomWeighter {
+    fn weight(&self, _key: &usize, val: &(u32, Arc<[u8]>)) -> u32 {
         if self.0 {
-            std::num::NonZeroU32::new(val.0).unwrap()
+            val.0
         } else {
-            std::num::NonZeroU32::new(1).unwrap()
+            1
         }
     }
 }
@@ -47,6 +47,7 @@ impl QuickCache {
                 options,
                 CustomWeighter(config.size_aware),
                 DefaultHasher,
+                ::quick_cache::sync::DefaultLifecycle::default(),
             )
             .into(),
         }
