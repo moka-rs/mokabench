@@ -40,7 +40,7 @@ async-std = { optional = true, version = "1.12.0", features = ["attributes"] }
 # Cache implementations
 hashlink = { optional = true, version = "0.8.1" }
 mini-moka = { optional = true, version = "0.10.0" }
-quick_cache = { optional = true, version = "0.2.1" }
+quick_cache = { optional = true, version = "0.5" }
 stretto = { optional = true, version = "0.7.1" }
 
 [dependencies.moka012]
