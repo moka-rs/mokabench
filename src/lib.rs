@@ -66,6 +66,8 @@ use crate::cache::mini_moka_driver::{
 use crate::cache::quick_cache::QuickCache;
 #[cfg(feature = "stretto")]
 use crate::cache::stretto::StrettoCache;
+#[cfg(feature = "tiny-ufo")]
+use crate::cache::tiny_ufo::TinyUfoCache;
 
 const BATCH_SIZE: usize = 200;
 
@@ -206,6 +208,17 @@ pub fn run_multi_threads_stretto(
 ) -> anyhow::Result<Report> {
     let cache_driver = StrettoCache::new(config, capacity);
     let report_builder = ReportBuilder::new("Stretto", capacity as _, Some(num_clients));
+    run_multi_threads(config, num_clients, cache_driver, report_builder)
+}
+
+#[cfg(feature = "tiny-ufo")]
+pub fn run_multi_threads_tiny_ufo(
+    config: &Config,
+    capacity: usize,
+    num_clients: u16,
+) -> anyhow::Result<Report> {
+    let cache_driver = TinyUfoCache::new(config, capacity);
+    let report_builder = ReportBuilder::new("TinyUFO", capacity as _, Some(num_clients));
     run_multi_threads(config, num_clients, cache_driver, report_builder)
 }
 

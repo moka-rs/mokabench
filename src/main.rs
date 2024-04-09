@@ -96,6 +96,18 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
         }
     }
 
+    #[cfg(feature = "tiny-ufo")]
+    if !config.insert_once
+        && !config.size_aware
+        && !config.invalidate_entries_if
+        && !config.is_eviction_listener_enabled()
+    {
+        for num_clients in num_clients_slice {
+            let report = mokabench::run_multi_threads_tiny_ufo(config, capacity, *num_clients)?;
+            println!("{}", report.to_csv_record());
+        }
+    }
+
     #[cfg(any(feature = "mini-moka", feature = "moka-v08", feature = "moka-v09"))]
     if !config.insert_once
         && !config.invalidate_entries_if
@@ -332,6 +344,10 @@ fn create_config() -> anyhow::Result<(Vec<TraceFile>, Config)> {
 
     if !entry_api && insert_once && cfg!(not(any(feature = "moka-v08", feature = "moka-v09"))) {
         eprintln!("\nWARNING: Testing Moka's entry API is disabled by default. Use --entry-api to enable it.\n");
+    }
+
+    if cfg!(feature = "tiny-ufo") {
+        eprintln!("\nWARNING: TinyUFO crate does not support custom hasher. Its default hasher will be used for TinyUFO.\n");
     }
 
     let mut config = Config::new(

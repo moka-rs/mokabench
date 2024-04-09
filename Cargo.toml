@@ -17,6 +17,7 @@ hashlink = ["dep:hashlink"]
 mini-moka = ["dep:mini-moka"]
 quick_cache = ["dep:quick_cache"]
 stretto = ["dep:stretto"]
+tiny-ufo = ["dep:TinyUFO"]
 
 rt-tokio = ["dep:tokio"]
 rt-async-std = ["dep:async-std"]
@@ -42,6 +43,7 @@ hashlink = { optional = true, version = "0.8.1" }
 mini-moka = { optional = true, version = "0.10.0" }
 quick_cache = { optional = true, version = "0.5" }
 stretto = { optional = true, version = "0.7.1" }
+TinyUFO = { optional = true, version = "0.1" }
 
 [dependencies.moka012]
 package = "moka"
