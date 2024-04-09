@@ -18,6 +18,8 @@ pub(crate) mod moka_driver;
 pub(crate) mod quick_cache;
 #[cfg(feature = "stretto")]
 pub(crate) mod stretto;
+#[cfg(feature = "tiny-ufo")]
+pub(crate) mod tiny_ufo;
 
 pub(crate) type Key = usize;
 pub(crate) type Value = (u32, Arc<[u8]>);

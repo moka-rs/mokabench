@@ -105,8 +105,11 @@ $ cargo build --release --no-default-features -F moka-v09,rt-tokio
 | `mini-moka`   | [Mini-Moka](https://crates.io/crates/mini-moka) |
 | `quick_cache` | [quick_cache](https://crates.io/crates/quick_cache) |
 | `stretto`     | [Stretto](https://crates.io/crates/stretto) |
+| `tiny-ufo`    | [TinyUFO](https://crates.io/crates/TinyUFO) |
 
 **Features to select async runtime:**
+
+Only used by Moka async cache.
 
 | Feature        | Enabled Cache Product |
 |:---------------|:----------------------|
