@@ -18,6 +18,7 @@ mini-moka = ["dep:mini-moka"]
 quick_cache = ["dep:quick_cache"]
 stretto = ["dep:stretto"]
 tiny-ufo = ["dep:TinyUFO"]
+foyer = ["dep:foyer"]
 
 rt-tokio = ["dep:tokio"]
 rt-async-std = ["dep:async-std"]
@@ -44,6 +45,7 @@ mini-moka = { optional = true, version = "0.10.0" }
 quick_cache = { optional = true, version = "0.5" }
 stretto = { optional = true, version = "0.7.1" }
 TinyUFO = { optional = true, version = "0.1" }
+foyer = { optional = true, version = "0.8" }
 
 [dependencies.moka012]
 package = "moka"
