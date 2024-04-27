@@ -21,6 +21,9 @@ pub(crate) mod stretto;
 #[cfg(feature = "tiny-ufo")]
 pub(crate) mod tiny_ufo;
 
+#[cfg(feature = "foyer")]
+pub(crate) mod foyer;
+
 pub(crate) type Key = usize;
 pub(crate) type Value = (u32, Arc<[u8]>);
 
