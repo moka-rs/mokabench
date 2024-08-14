@@ -200,6 +200,34 @@ pub fn run_multi_threads_quick_cache(
     run_multi_threads(config, num_clients, cache_driver, report_builder)
 }
 
+#[cfg(feature = "light-cache")]
+pub fn run_multi_threads_light_cache(
+    config: &Config,
+    capacity: usize,
+    num_clients: u16,
+) -> anyhow::Result<Report> {
+    use cache::light_cache::LightCache;
+
+    let cache_driver = LightCache::new(config, capacity);
+    let report_builder =
+        ReportBuilder::new("LightCache Sync Cache", capacity as _, Some(num_clients));
+    run_multi_threads(config, num_clients, cache_driver, report_builder)
+}
+
+#[cfg(feature = "light-cache-lru")]
+pub fn run_multi_threads_light_cache_lru(
+    config: &Config,
+    capacity: usize,
+    num_clients: u16,
+) -> anyhow::Result<Report> {
+    use cache::light_cache_lru::LightCacheLru;
+
+    let cache_driver = LightCacheLru::new(config, capacity);
+    let report_builder =
+        ReportBuilder::new("LightCache Sync Cache LRU", capacity as _, Some(num_clients));
+    run_multi_threads(config, num_clients, cache_driver, report_builder)
+}
+
 #[cfg(feature = "stretto")]
 pub fn run_multi_threads_stretto(
     config: &Config,

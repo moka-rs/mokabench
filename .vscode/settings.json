@@ -5,7 +5,9 @@
         "mini-moka",
         "quick_cache",
         "stretto",
-        "tiny-ufo"
+        "tiny-ufo",
+        "light-cache",
+        "light-cache-lru",
     ],
     "rust-analyzer.server.extraEnv": {
         "CARGO_TARGET_DIR": "target/ra"

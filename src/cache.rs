@@ -21,6 +21,12 @@ pub(crate) mod stretto;
 #[cfg(feature = "tiny-ufo")]
 pub(crate) mod tiny_ufo;
 
+#[cfg(feature = "light-cache")]
+pub(crate) mod light_cache;
+
+#[cfg(feature = "light-cache-lru")]
+pub(crate) mod light_cache_lru;
+
 pub(crate) type Key = usize;
 pub(crate) type Value = (u32, Arc<[u8]>);
 

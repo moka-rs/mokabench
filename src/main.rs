@@ -84,6 +84,30 @@ async fn run_with_capacity(config: &Config, capacity: usize) -> anyhow::Result<(
         }
     }
 
+    #[cfg(feature = "light-cache")]
+    if !config.insert_once
+        && !config.size_aware
+        && !config.invalidate_entries_if
+        && !config.is_eviction_listener_enabled()
+    {
+        for num_clients in num_clients_slice {
+            let report = mokabench::run_multi_threads_light_cache(config, capacity, *num_clients)?;
+            println!("{}", report.to_csv_record());
+        }
+    }
+
+    #[cfg(feature = "light-cache-lru")]
+    if !config.insert_once
+        && !config.size_aware
+        && !config.invalidate_entries_if
+        && !config.is_eviction_listener_enabled()
+    {
+        for num_clients in num_clients_slice {
+            let report = mokabench::run_multi_threads_light_cache_lru(config, capacity, *num_clients)?;
+            println!("{}", report.to_csv_record());
+        }
+    }
+
     #[cfg(feature = "stretto")]
     if !config.insert_once
         && !config.size_aware

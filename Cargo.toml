@@ -16,6 +16,9 @@ moka-v08 = ["dep:moka08"]
 hashlink = ["dep:hashlink"]
 mini-moka = ["dep:mini-moka"]
 quick_cache = ["dep:quick_cache"]
+light-cache = ["dep:light-cache"]
+light-cache-lru = ["dep:light-cache"]
+
 stretto = ["dep:stretto"]
 tiny-ufo = ["dep:TinyUFO"]
 
@@ -44,6 +47,7 @@ mini-moka = { optional = true, version = "0.10.0" }
 quick_cache = { optional = true, version = "0.5" }
 stretto = { optional = true, version = "0.8.4" }
 TinyUFO = { optional = true, version = "0.1" }
+light-cache = { optional = true, version = "0.2.5" }
 
 [dependencies.moka012]
 package = "moka"
