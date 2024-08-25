@@ -43,14 +43,14 @@ async-std = { optional = true, version = "1.12.0", features = ["attributes"] }
 hashlink = { optional = true, version = "0.8.1" }
 mini-moka = { optional = true, version = "0.10.0" }
 quick_cache = { optional = true, version = "0.5" }
-stretto = { optional = true, version = "0.7.1" }
+stretto = { optional = true, version = "0.8.4" }
 TinyUFO = { optional = true, version = "0.1" }
 foyer = { optional = true, version = "0.8" }
 
 [dependencies.moka012]
 package = "moka"
 optional = true
-version = "0.12.3"
+version = "0.12"
 # git = "https://github.com/moka-rs/moka"
 # branch = "main"
 features = ["future", "sync"]
