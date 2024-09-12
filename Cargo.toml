@@ -45,7 +45,7 @@ mini-moka = { optional = true, version = "0.10.0" }
 quick_cache = { optional = true, version = "0.5" }
 stretto = { optional = true, version = "0.8.4" }
 TinyUFO = { optional = true, version = "0.1" }
-foyer = { optional = true, version = "0.8" }
+foyer = { optional = true, version = "0.11" }
 
 [dependencies.moka012]
 package = "moka"
