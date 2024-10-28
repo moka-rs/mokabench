@@ -40,12 +40,12 @@ tokio = { optional = true, version = "1.25.0", features = ["rt-multi-thread", "m
 async-std = { optional = true, version = "1.12.0", features = ["attributes"] }
 
 # Cache implementations
-hashlink = { optional = true, version = "0.8.1" }
+hashlink = { optional = true, version = "0.9" }
 mini-moka = { optional = true, version = "0.10.0" }
-quick_cache = { optional = true, version = "0.5" }
+quick_cache = { optional = true, version = "0.6" }
 stretto = { optional = true, version = "0.8.4" }
-TinyUFO = { optional = true, version = "0.1" }
-foyer = { optional = true, version = "0.11" }
+TinyUFO = { optional = true, version = "0.3" }
+foyer = { optional = true, version = "0.12" }
 
 [dependencies.moka012]
 package = "moka"
