@@ -4,7 +4,7 @@ use crate::{config::Config, parser::TraceEntry};
 
 use super::{CacheDriver, Counters, Key, Value};
 
-use ::foyer::{Cache, CacheBuilder};
+use ::foyer::{Cache, CacheBuilder, S3FifoConfig};
 
 #[derive(Clone)]
 pub struct FoyerCache {
@@ -21,7 +21,9 @@ impl FoyerCache {
             todo!()
         }
 
-        let mut builder = CacheBuilder::new(capacity).with_shards(64);
+        let mut builder = CacheBuilder::new(capacity)
+            .with_shards(64)
+            .with_eviction_config(S3FifoConfig::default());
 
         if config.size_aware {
             builder = builder.with_weighter(|_key: &Key, value: &Value| value.0 as usize);
