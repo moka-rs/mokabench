@@ -17,9 +17,9 @@ pub struct QuickCache {
 struct CustomWeighter(bool);
 
 impl ::quick_cache::Weighter<usize, (u32, Arc<[u8]>)> for CustomWeighter {
-    fn weight(&self, _key: &usize, val: &(u32, Arc<[u8]>)) -> u32 {
+    fn weight(&self, _key: &usize, val: &(u32, Arc<[u8]>)) -> u64 {
         if self.0 {
-            val.0
+            val.0 as u64
         } else {
             1
         }
